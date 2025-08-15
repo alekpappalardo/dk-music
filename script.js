@@ -86,12 +86,27 @@ function createVoiceNote(audioFile, index) {
     let chopInterval = null;
     
     fetch(audioFile.startsWith('/') ? audioFile : `/audio/${audioFile}`)
-        .then(response => response.arrayBuffer())
-        .then(data => audioContext.decodeAudioData(data))
+        .then(response => {
+            console.log('Audio fetch response:', response.status, response.statusText);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.arrayBuffer();
+        })
+        .then(data => {
+            console.log('Audio data loaded, size:', data.byteLength);
+            return audioContext.decodeAudioData(data);
+        })
         .then(buffer => {
             audioBuffer = buffer;
             const duration = buffer.duration;
             voiceNote.querySelector('.duration').textContent = formatDuration(duration);
+            console.log('Audio loaded successfully, duration:', duration);
+        })
+        .catch(error => {
+            console.error('Error loading audio:', error);
+            voiceNote.style.opacity = '0.5';
+            voiceNote.querySelector('.duration').textContent = 'Error';
         });
     
     function playAudio(playbackRate = 1) {
