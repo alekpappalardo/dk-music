@@ -1,0 +1,12 @@
+{
+  "name": "voice-notes-app",
+  "version": "1.0.0",
+  "description": "WhatsApp-style voice notes on black background",
+  "scripts": {
+    "dev": "python3 -m http.server 3000",
+    "build": "echo 'No build step required'"
+  },
+  "keywords": ["voice-notes", "audio", "whatsapp"],
+  "author": "",
+  "license": "MIT"
+}
