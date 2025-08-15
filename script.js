@@ -7,7 +7,7 @@ async function loadAudioFiles() {
     // Use different path for local vs deployed
     const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     audioFiles = [
-        isLocal ? '/public/audio/maestro-paolo.wav' : '/audio/maestro-paolo.wav'
+        isLocal ? '/public/audio/megl-accussi.wav' : '/audio/megl-accussi.wav'
     ];
     
     if (audioFiles.length > 0) {
@@ -59,7 +59,12 @@ function createVoiceNote(audioFile, index) {
     voiceNote.style.top = `${position.y}px`;
     voiceNote.style.transform = `rotate(${rotation}deg)`;
     
+    // Extract title from filename (remove path and extension)
+    const fileName = audioFile.split('/').pop().replace(/\.[^/.]+$/, '');
+    const title = fileName.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    
     voiceNote.innerHTML = `
+        <div class="voice-note-title">${title}</div>
         <div class="audio-controls">
             <div class="play-button">
                 <div class="play-icon"></div>
