@@ -4,8 +4,10 @@ let currentlyPlaying = null;
 async function loadAudioFiles() {
     // For now, manually specify your audio file
     // Replace this with your actual audio filename
+    // Use different path for local vs deployed
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     audioFiles = [
-        '/audio/maestro-paolo.wav'
+        isLocal ? '/public/audio/maestro-paolo.wav' : '/audio/maestro-paolo.wav'
     ];
     
     if (audioFiles.length > 0) {
@@ -140,9 +142,12 @@ function createVoiceNote(audioFile, index) {
     function playChoppedEffect() {
         if (!audioBuffer) return;
         
-        const chopDuration = 0.1;
-        const gapDuration = 0.05;
+        const phrases = [0.25, 0.5, 0.125, 0.75, 0.25, 0.375]; // Varying chop lengths
+        const gaps = [0.1, 0.05, 0.15, 0.075]; // Varying gap lengths
+        let phraseIndex = 0;
+        let gapIndex = 0;
         let currentChopTime = pauseTime;
+        let isReversed = false;
         
         function playChop() {
             if (!isPlaying || currentEffect !== 'chopped') return;
@@ -154,19 +159,63 @@ function createVoiceNote(audioFile, index) {
             
             source = audioContext.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(audioContext.destination);
             
-            const startOffset = currentChopTime % audioBuffer.duration;
-            source.start(0, startOffset, chopDuration);
-            
-            currentChopTime += chopDuration * 2;
-            pauseTime = currentChopTime;
-            
-            if (currentChopTime >= audioBuffer.duration) {
-                stopAudio();
-                return;
+            // Travis Scott style: Sometimes reverse, sometimes pitch shift, always rhythmic
+            if (Math.random() > 0.7) {
+                isReversed = !isReversed;
             }
             
+            // Add some pitch variation (subtle)
+            const pitchVariation = 0.95 + (Math.random() * 0.1); // 0.95 to 1.05
+            source.playbackRate.value = pitchVariation;
+            
+            // Add reverb/delay effect
+            const gainNode = audioContext.createGain();
+            const delayNode = audioContext.createDelay();
+            const feedbackGain = audioContext.createGain();
+            
+            delayNode.delayTime.value = 0.05; // Short delay for thickness
+            feedbackGain.gain.value = 0.3;
+            gainNode.gain.value = 0.8;
+            
+            source.connect(gainNode);
+            gainNode.connect(delayNode);
+            delayNode.connect(feedbackGain);
+            feedbackGain.connect(delayNode);
+            gainNode.connect(audioContext.destination);
+            delayNode.connect(audioContext.destination);
+            
+            const chopDuration = phrases[phraseIndex % phrases.length];
+            const startOffset = currentChopTime % audioBuffer.duration;
+            
+            if (isReversed && Math.random() > 0.8) {
+                // Reverse effect (simplified - just plays backwards from current position)
+                const reverseStart = Math.max(0, startOffset - chopDuration);
+                source.start(0, reverseStart, chopDuration);
+            } else {
+                source.start(0, startOffset, chopDuration);
+            }
+            
+            // Move forward with some randomness (Travis style)
+            const movement = chopDuration + (Math.random() * 0.2 - 0.1); // Slight random offset
+            currentChopTime += movement;
+            pauseTime = currentChopTime;
+            
+            // Sometimes jump to different parts of the track
+            if (Math.random() > 0.85) {
+                currentChopTime = Math.random() * audioBuffer.duration;
+                pauseTime = currentChopTime;
+            }
+            
+            if (currentChopTime >= audioBuffer.duration) {
+                currentChopTime = 0; // Loop back to beginning
+                pauseTime = 0;
+            }
+            
+            phraseIndex++;
+            gapIndex++;
+            
+            const gapDuration = gaps[gapIndex % gaps.length];
             chopInterval = setTimeout(playChop, (chopDuration + gapDuration) * 1000);
         }
         
@@ -319,6 +368,7 @@ function createVoiceNote(audioFile, index) {
         isDragging = true;
         voiceNote.style.cursor = 'grabbing';
         voiceNote.style.zIndex = '1000';
+        voiceNote.style.transition = 'none';
         
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -333,12 +383,20 @@ function createVoiceNote(audioFile, index) {
         velocityX = 0;
         velocityY = 0;
         
+        // Track velocity history for smoother throws
+        const velocityHistory = [];
+        const historyLimit = 5;
+        
+        voiceNote.velocityHistory = velocityHistory;
+        voiceNote.historyLimit = historyLimit;
+        
         if (animationId) {
             cancelAnimationFrame(animationId);
             animationId = null;
         }
         
         e.preventDefault();
+        e.stopPropagation();
     }
     
     function drag(e) {
@@ -347,8 +405,14 @@ function createVoiceNote(audioFile, index) {
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
         
-        velocityX = clientX - lastMouseX;
-        velocityY = clientY - lastMouseY;
+        const newVelocityX = clientX - lastMouseX;
+        const newVelocityY = clientY - lastMouseY;
+        
+        // Track velocity history for smoother throwing
+        voiceNote.velocityHistory.push({ x: newVelocityX, y: newVelocityY, time: Date.now() });
+        if (voiceNote.velocityHistory.length > voiceNote.historyLimit) {
+            voiceNote.velocityHistory.shift();
+        }
         
         lastMouseX = clientX;
         lastMouseY = clientY;
@@ -356,71 +420,111 @@ function createVoiceNote(audioFile, index) {
         const deltaX = clientX - dragStartX;
         const deltaY = clientY - dragStartY;
         
-        voiceNote.style.left = `${elementStartX + deltaX}px`;
-        voiceNote.style.top = `${elementStartY + deltaY}px`;
+        const newX = elementStartX + deltaX;
+        const newY = elementStartY + deltaY;
+        
+        // Use transform for better performance on mobile
+        voiceNote.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0) rotate(${getRandomRotation()}deg)`;
+        voiceNote.style.left = `${newX}px`;
+        voiceNote.style.top = `${newY}px`;
+        
+        e.preventDefault();
+        e.stopPropagation();
     }
     
     function endDrag() {
         if (!isDragging) return;
         
         isDragging = false;
-        voiceNote.style.cursor = 'pointer';
+        voiceNote.style.cursor = 'grab';
         voiceNote.style.zIndex = '';
+        voiceNote.style.transform = voiceNote.style.transform.replace('translate3d(0px, 0px, 0)', '');
         
-        if (Math.abs(velocityX) > 2 || Math.abs(velocityY) > 2) {
-            animateThrow();
+        // Calculate average velocity from recent history for smoother throws
+        if (voiceNote.velocityHistory && voiceNote.velocityHistory.length > 0) {
+            const recentHistory = voiceNote.velocityHistory.slice(-3);
+            const avgVelocityX = recentHistory.reduce((sum, v) => sum + v.x, 0) / recentHistory.length;
+            const avgVelocityY = recentHistory.reduce((sum, v) => sum + v.y, 0) / recentHistory.length;
+            
+            velocityX = avgVelocityX * 2; // Amplify for better throw feel
+            velocityY = avgVelocityY * 2;
+            
+            if (Math.abs(velocityX) > 1 || Math.abs(velocityY) > 1) {
+                animateThrow();
+            }
         }
     }
     
     function animateThrow() {
-        const friction = 0.95;
-        const gravity = 0.5;
-        const bounceDamping = 0.7;
-        const minVelocity = 0.5;
+        const friction = 0.98;
+        const gravity = 0.4;
+        const bounceDamping = 0.75;
+        const minVelocity = 0.3;
+        const maxVelocity = 25;
+        
+        // Cap velocity for smoother experience
+        velocityX = Math.max(-maxVelocity, Math.min(maxVelocity, velocityX));
+        velocityY = Math.max(-maxVelocity, Math.min(maxVelocity, velocityY));
+        
+        let rotationVelocity = velocityX * 0.3;
+        let currentRotation = parseFloat(voiceNote.style.transform.match(/rotate\(([-\d.]+)deg\)/)?.[1] || 0);
         
         function animate() {
             velocityX *= friction;
             velocityY *= friction;
             velocityY += gravity;
+            rotationVelocity *= friction;
             
             let x = parseFloat(voiceNote.style.left);
             let y = parseFloat(voiceNote.style.top);
             
             x += velocityX;
             y += velocityY;
+            currentRotation += rotationVelocity;
             
             const noteWidth = voiceNote.offsetWidth;
             const noteHeight = voiceNote.offsetHeight;
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
             
+            // Bounce off edges with more realistic physics
             if (x < 0) {
                 x = 0;
                 velocityX = -velocityX * bounceDamping;
-            } else if (x + noteWidth > window.innerWidth) {
-                x = window.innerWidth - noteWidth;
+                rotationVelocity *= -0.8;
+            } else if (x + noteWidth > screenWidth) {
+                x = screenWidth - noteWidth;
                 velocityX = -velocityX * bounceDamping;
+                rotationVelocity *= -0.8;
             }
             
             if (y < 0) {
                 y = 0;
                 velocityY = -velocityY * bounceDamping;
-            } else if (y + noteHeight > window.innerHeight) {
-                y = window.innerHeight - noteHeight;
+                rotationVelocity *= 0.8;
+            } else if (y + noteHeight > screenHeight) {
+                y = screenHeight - noteHeight;
                 velocityY = -velocityY * bounceDamping;
+                rotationVelocity *= 0.8;
                 
-                if (Math.abs(velocityY) < 2) {
+                // Settle on ground
+                if (Math.abs(velocityY) < 1.5) {
                     velocityY = 0;
+                    y = screenHeight - noteHeight;
                 }
             }
             
+            // Use transform for better performance
+            voiceNote.style.transform = `translate3d(${x - parseFloat(voiceNote.style.left)}px, ${y - parseFloat(voiceNote.style.top)}px, 0) rotate(${currentRotation}deg)`;
             voiceNote.style.left = `${x}px`;
             voiceNote.style.top = `${y}px`;
             
-            const currentRotation = parseFloat(voiceNote.style.transform.match(/rotate\(([-\d.]+)deg\)/)?.[1] || 0);
-            voiceNote.style.transform = `rotate(${currentRotation + velocityX * 0.5}deg)`;
-            
-            if (Math.abs(velocityX) > minVelocity || Math.abs(velocityY) > minVelocity) {
+            // Continue animation while there's significant movement
+            if (Math.abs(velocityX) > minVelocity || Math.abs(velocityY) > minVelocity || Math.abs(rotationVelocity) > 0.5) {
                 animationId = requestAnimationFrame(animate);
             } else {
+                // Final position cleanup
+                voiceNote.style.transform = `rotate(${currentRotation}deg)`;
                 animationId = null;
             }
         }
