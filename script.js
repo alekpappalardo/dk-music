@@ -142,12 +142,9 @@ function createVoiceNote(audioFile, index) {
     function playChoppedEffect() {
         if (!audioBuffer) return;
         
-        const phrases = [0.25, 0.5, 0.125, 0.75, 0.25, 0.375]; // Varying chop lengths
-        const gaps = [0.1, 0.05, 0.15, 0.075]; // Varying gap lengths
-        let phraseIndex = 0;
-        let gapIndex = 0;
         let currentChopTime = pauseTime;
-        let isReversed = false;
+        let repeatCount = 0;
+        let currentSegment = null;
         
         function playChop() {
             if (!isPlaying || currentEffect !== 'chopped') return;
@@ -160,63 +157,80 @@ function createVoiceNote(audioFile, index) {
             source = audioContext.createBufferSource();
             source.buffer = audioBuffer;
             
-            // Travis Scott style: Sometimes reverse, sometimes pitch shift, always rhythmic
-            if (Math.random() > 0.7) {
-                isReversed = !isReversed;
-            }
+            // Chopped and screwed signature: slowed down (0.7x speed)
+            source.playbackRate.value = 0.7;
             
-            // Add some pitch variation (subtle)
-            const pitchVariation = 0.95 + (Math.random() * 0.1); // 0.95 to 1.05
-            source.playbackRate.value = pitchVariation;
-            
-            // Add reverb/delay effect
+            // Create effects chain for that thick, syrupy sound
             const gainNode = audioContext.createGain();
+            const lowpassFilter = audioContext.createBiquadFilter();
             const delayNode = audioContext.createDelay();
             const feedbackGain = audioContext.createGain();
             
-            delayNode.delayTime.value = 0.05; // Short delay for thickness
-            feedbackGain.gain.value = 0.3;
-            gainNode.gain.value = 0.8;
+            // Low-pass filter for muffled, underwater effect
+            lowpassFilter.type = 'lowpass';
+            lowpassFilter.frequency.value = 2000;
+            lowpassFilter.Q.value = 3;
             
-            source.connect(gainNode);
+            // Delay for echo/reverb
+            delayNode.delayTime.value = 0.15;
+            feedbackGain.gain.value = 0.35;
+            gainNode.gain.value = 0.9;
+            
+            // Connect the chain
+            source.connect(lowpassFilter);
+            lowpassFilter.connect(gainNode);
             gainNode.connect(delayNode);
             delayNode.connect(feedbackGain);
             feedbackGain.connect(delayNode);
             gainNode.connect(audioContext.destination);
             delayNode.connect(audioContext.destination);
             
-            const chopDuration = phrases[phraseIndex % phrases.length];
+            let chopDuration, nextDelay;
+            
+            // Chopped and screwed pattern: repeat segments multiple times
+            if (repeatCount === 0) {
+                // New segment - choose duration
+                currentSegment = Math.random() > 0.6 ? 
+                    Math.random() * 0.8 + 0.3 : // Longer phrases (0.3-1.1s)
+                    Math.random() * 0.4 + 0.1;   // Shorter chops (0.1-0.5s)
+                
+                repeatCount = Math.random() > 0.4 ? 
+                    Math.floor(Math.random() * 3) + 2 : // Repeat 2-4 times
+                    1; // Sometimes no repeat
+            }
+            
+            chopDuration = currentSegment;
             const startOffset = currentChopTime % audioBuffer.duration;
             
-            if (isReversed && Math.random() > 0.8) {
-                // Reverse effect (simplified - just plays backwards from current position)
-                const reverseStart = Math.max(0, startOffset - chopDuration);
-                source.start(0, reverseStart, chopDuration);
+            // Play the segment
+            source.start(0, startOffset, chopDuration);
+            
+            repeatCount--;
+            
+            if (repeatCount > 0) {
+                // Repeat the same segment
+                nextDelay = chopDuration / 0.7; // Account for slower playback
             } else {
-                source.start(0, startOffset, chopDuration);
-            }
-            
-            // Move forward with some randomness (Travis style)
-            const movement = chopDuration + (Math.random() * 0.2 - 0.1); // Slight random offset
-            currentChopTime += movement;
-            pauseTime = currentChopTime;
-            
-            // Sometimes jump to different parts of the track
-            if (Math.random() > 0.85) {
-                currentChopTime = Math.random() * audioBuffer.duration;
+                // Move to next part
+                const movement = chopDuration + (Math.random() * 0.3); // Some overlap/gap
+                currentChopTime += movement;
                 pauseTime = currentChopTime;
+                
+                // Occasionally skip to a different part (less frequent than before)
+                if (Math.random() > 0.92) {
+                    currentChopTime = Math.random() * audioBuffer.duration;
+                    pauseTime = currentChopTime;
+                }
+                
+                if (currentChopTime >= audioBuffer.duration) {
+                    currentChopTime = 0;
+                    pauseTime = 0;
+                }
+                
+                nextDelay = (chopDuration / 0.7) + (Math.random() * 0.1); // Small random gap
             }
             
-            if (currentChopTime >= audioBuffer.duration) {
-                currentChopTime = 0; // Loop back to beginning
-                pauseTime = 0;
-            }
-            
-            phraseIndex++;
-            gapIndex++;
-            
-            const gapDuration = gaps[gapIndex % gaps.length];
-            chopInterval = setTimeout(playChop, (chopDuration + gapDuration) * 1000);
+            chopInterval = setTimeout(playChop, nextDelay * 1000);
         }
         
         isPlaying = true;
