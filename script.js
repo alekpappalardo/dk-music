@@ -71,7 +71,7 @@ function createVoiceNote(audioFile, index) {
             <span class="duration">0:00</span>
         </div>
         <div class="effect-buttons">
-            <button class="effect-btn" data-effect="chopped">chopped</button>
+            <button class="effect-btn" data-effect="deep bass">deep bass</button>
             <button class="effect-btn" data-effect="fast">fast</button>
             <button class="effect-btn" data-effect="slow">slow</button>
         </div>
@@ -139,103 +139,63 @@ function createVoiceNote(audioFile, index) {
         updateProgress();
     }
     
-    function playChoppedEffect() {
+    function playDeepBassEffect() {
         if (!audioBuffer) return;
         
-        let currentChopTime = pauseTime;
-        let repeatCount = 0;
-        let currentSegment = null;
-        
-        function playChop() {
-            if (!isPlaying || currentEffect !== 'chopped') return;
-            
-            if (source) {
-                source.stop();
-                source.disconnect();
-            }
-            
-            source = audioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            
-            // Chopped and screwed signature: slowed down (0.7x speed)
-            source.playbackRate.value = 0.7;
-            
-            // Create effects chain for that thick, syrupy sound
-            const gainNode = audioContext.createGain();
-            const lowpassFilter = audioContext.createBiquadFilter();
-            const delayNode = audioContext.createDelay();
-            const feedbackGain = audioContext.createGain();
-            
-            // Low-pass filter for muffled, underwater effect
-            lowpassFilter.type = 'lowpass';
-            lowpassFilter.frequency.value = 2000;
-            lowpassFilter.Q.value = 3;
-            
-            // Delay for echo/reverb
-            delayNode.delayTime.value = 0.15;
-            feedbackGain.gain.value = 0.35;
-            gainNode.gain.value = 0.9;
-            
-            // Connect the chain
-            source.connect(lowpassFilter);
-            lowpassFilter.connect(gainNode);
-            gainNode.connect(delayNode);
-            delayNode.connect(feedbackGain);
-            feedbackGain.connect(delayNode);
-            gainNode.connect(audioContext.destination);
-            delayNode.connect(audioContext.destination);
-            
-            let chopDuration, nextDelay;
-            
-            // Lighter chopped pattern: longer segments, less repetition
-            if (repeatCount === 0) {
-                // New segment - favor longer phrases
-                currentSegment = Math.random() > 0.3 ? 
-                    Math.random() * 1.2 + 0.8 : // Longer phrases (0.8-2.0s)
-                    Math.random() * 0.6 + 0.4;   // Medium chops (0.4-1.0s)
-                
-                repeatCount = Math.random() > 0.7 ? 
-                    Math.floor(Math.random() * 2) + 2 : // Repeat 2-3 times (less frequent)
-                    1; // More often no repeat
-            }
-            
-            chopDuration = currentSegment;
-            const startOffset = currentChopTime % audioBuffer.duration;
-            
-            // Play the segment
-            source.start(0, startOffset, chopDuration);
-            
-            repeatCount--;
-            
-            if (repeatCount > 0) {
-                // Repeat the same segment
-                nextDelay = chopDuration / 0.7; // Account for slower playback
-            } else {
-                // Move to next part
-                const movement = chopDuration + (Math.random() * 0.3); // Some overlap/gap
-                currentChopTime += movement;
-                pauseTime = currentChopTime;
-                
-                // Rarely skip to a different part (even less frequent for smoother flow)
-                if (Math.random() > 0.95) {
-                    currentChopTime = Math.random() * audioBuffer.duration;
-                    pauseTime = currentChopTime;
-                }
-                
-                if (currentChopTime >= audioBuffer.duration) {
-                    currentChopTime = 0;
-                    pauseTime = 0;
-                }
-                
-                nextDelay = (chopDuration / 0.7) + (Math.random() * 0.05); // Even smaller gap for smoother flow
-            }
-            
-            chopInterval = setTimeout(playChop, nextDelay * 1000);
+        if (source) {
+            source.stop();
+            source.disconnect();
         }
         
+        source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        
+        // Normal playback speed
+        source.playbackRate.value = 1;
+        
+        // Create bass boost effect chain
+        const gainNode = audioContext.createGain();
+        const bassBoost = audioContext.createBiquadFilter();
+        const lowShelf = audioContext.createBiquadFilter();
+        const compressor = audioContext.createDynamicsCompressor();
+        
+        // Bass boost - emphasize low frequencies
+        bassBoost.type = 'peaking';
+        bassBoost.frequency.value = 80; // Deep bass frequency
+        bassBoost.Q.value = 2;
+        bassBoost.gain.value = 12; // +12dB boost
+        
+        // Low shelf for additional warmth
+        lowShelf.type = 'lowshelf';
+        lowShelf.frequency.value = 200;
+        lowShelf.gain.value = 8; // +8dB boost
+        
+        // Compressor to control the boosted bass
+        compressor.threshold.value = -20;
+        compressor.knee.value = 5;
+        compressor.ratio.value = 4;
+        compressor.attack.value = 0.01;
+        compressor.release.value = 0.1;
+        
+        gainNode.gain.value = 1.2; // Slight overall boost
+        
+        // Connect the effects chain
+        source.connect(bassBoost);
+        bassBoost.connect(lowShelf);
+        lowShelf.connect(compressor);
+        compressor.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        const offset = pauseTime;
+        source.start(0, offset);
+        startTime = audioContext.currentTime - offset;
         isPlaying = true;
         voiceNote.classList.add('playing');
-        playChop();
+        
+        source.onended = () => {
+            stopAudio();
+        };
+        
         updateProgress();
     }
     
@@ -317,8 +277,8 @@ function createVoiceNote(audioFile, index) {
                 currentlyPlaying.stop();
             }
             
-            if (currentEffect === 'chopped') {
-                playChoppedEffect();
+            if (currentEffect === 'deep bass') {
+                playDeepBassEffect();
             } else if (currentEffect === 'fast') {
                 playAudio(1.5);
             } else if (currentEffect === 'slow') {
@@ -353,8 +313,8 @@ function createVoiceNote(audioFile, index) {
                     pauseAudio();
                     pauseTime = 0;
                     
-                    if (effect === 'chopped') {
-                        playChoppedEffect();
+                    if (effect === 'deep bass') {
+                        playDeepBassEffect();
                     } else if (effect === 'fast') {
                         playAudio(1.5);
                     } else if (effect === 'slow') {
