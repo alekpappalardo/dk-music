@@ -5,7 +5,7 @@ async function loadAudioFiles() {
     // For now, manually specify your audio file
     // Replace this with your actual audio filename
     audioFiles = [
-        '/audio/maestro paolo con alek - megl accussi.wav'
+        '/audio/maestro-paolo.wav'
     ];
     
     if (audioFiles.length > 0) {
