@@ -2,22 +2,20 @@ let audioFiles = [];
 let currentlyPlaying = null;
 
 async function loadAudioFiles() {
-    try {
-        const response = await fetch('/api/audio-files');
-        const data = await response.json();
-        audioFiles = data.files;
-        
-        if (audioFiles.length > 0) {
-            audioFiles.forEach((file, index) => {
-                setTimeout(() => {
-                    createVoiceNote(file, index);
-                }, index * 100);
-            });
-        } else {
-            console.log('No audio files found. Add files to public/audio/ folder.');
-        }
-    } catch (error) {
-        console.error('Error loading audio files:', error);
+    // For now, manually specify your audio file
+    // Replace this with your actual audio filename
+    audioFiles = [
+        '/audio/maestro paolo con alek - megl accussi.wav'
+    ];
+    
+    if (audioFiles.length > 0) {
+        audioFiles.forEach((file, index) => {
+            setTimeout(() => {
+                createVoiceNote(file, index);
+            }, index * 100);
+        });
+    } else {
+        console.log('No audio files found. Add files to public/audio/ folder.');
     }
 }
 
