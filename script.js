@@ -187,16 +187,16 @@ function createVoiceNote(audioFile, index) {
             
             let chopDuration, nextDelay;
             
-            // Chopped and screwed pattern: repeat segments multiple times
+            // Lighter chopped pattern: longer segments, less repetition
             if (repeatCount === 0) {
-                // New segment - choose duration
-                currentSegment = Math.random() > 0.6 ? 
-                    Math.random() * 0.8 + 0.3 : // Longer phrases (0.3-1.1s)
-                    Math.random() * 0.4 + 0.1;   // Shorter chops (0.1-0.5s)
+                // New segment - favor longer phrases
+                currentSegment = Math.random() > 0.3 ? 
+                    Math.random() * 1.2 + 0.8 : // Longer phrases (0.8-2.0s)
+                    Math.random() * 0.6 + 0.4;   // Medium chops (0.4-1.0s)
                 
-                repeatCount = Math.random() > 0.4 ? 
-                    Math.floor(Math.random() * 3) + 2 : // Repeat 2-4 times
-                    1; // Sometimes no repeat
+                repeatCount = Math.random() > 0.7 ? 
+                    Math.floor(Math.random() * 2) + 2 : // Repeat 2-3 times (less frequent)
+                    1; // More often no repeat
             }
             
             chopDuration = currentSegment;
@@ -216,8 +216,8 @@ function createVoiceNote(audioFile, index) {
                 currentChopTime += movement;
                 pauseTime = currentChopTime;
                 
-                // Occasionally skip to a different part (less frequent than before)
-                if (Math.random() > 0.92) {
+                // Rarely skip to a different part (even less frequent for smoother flow)
+                if (Math.random() > 0.95) {
                     currentChopTime = Math.random() * audioBuffer.duration;
                     pauseTime = currentChopTime;
                 }
@@ -227,7 +227,7 @@ function createVoiceNote(audioFile, index) {
                     pauseTime = 0;
                 }
                 
-                nextDelay = (chopDuration / 0.7) + (Math.random() * 0.1); // Small random gap
+                nextDelay = (chopDuration / 0.7) + (Math.random() * 0.05); // Even smaller gap for smoother flow
             }
             
             chopInterval = setTimeout(playChop, nextDelay * 1000);
