@@ -7,31 +7,17 @@ async function loadAudioFiles() {
         const data = await response.json();
         audioFiles = data.files;
         
-        if (audioFiles.length === 0) {
-            audioFiles = [
-                '/audio/sample1.mp3',
-                '/audio/sample2.mp3',
-                '/audio/sample3.mp3'
-            ];
+        if (audioFiles.length > 0) {
+            audioFiles.forEach((file, index) => {
+                setTimeout(() => {
+                    createVoiceNote(file, index);
+                }, index * 100);
+            });
+        } else {
+            console.log('No audio files found. Add files to public/audio/ folder.');
         }
-        
-        audioFiles.forEach((file, index) => {
-            setTimeout(() => {
-                createVoiceNote(file, index);
-            }, index * 100);
-        });
     } catch (error) {
         console.error('Error loading audio files:', error);
-        audioFiles = [
-            '/audio/sample1.mp3',
-            '/audio/sample2.mp3',
-            '/audio/sample3.mp3'
-        ];
-        audioFiles.forEach((file, index) => {
-            setTimeout(() => {
-                createVoiceNote(file, index);
-            }, index * 100);
-        });
     }
 }
 
