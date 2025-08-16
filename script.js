@@ -75,7 +75,7 @@ function createVoiceNote(audioFile, index) {
             <span class="duration">0:00</span>
         </div>
         <div class="effect-buttons">
-            <button class="effect-btn" data-effect="deep bass">deep bass</button>
+            <button class="effect-btn" data-effect="bass">bass</button>
             <button class="effect-btn" data-effect="fast">fast</button>
             <button class="effect-btn" data-effect="slow">slow</button>
         </div>
@@ -147,7 +147,7 @@ function createVoiceNote(audioFile, index) {
         updateProgress();
     }
     
-    function playDeepBassEffect() {
+    function playAudioWithEffect(playbackRate = 1, useBass = false) {
         if (!audioBuffer) return;
         
         if (source) {
@@ -157,42 +157,45 @@ function createVoiceNote(audioFile, index) {
         
         source = audioContext.createBufferSource();
         source.buffer = audioBuffer;
+        source.playbackRate.value = playbackRate;
         
-        // Normal playback speed
-        source.playbackRate.value = 1;
-        
-        // Create bass boost effect chain
-        const gainNode = audioContext.createGain();
-        const bassBoost = audioContext.createBiquadFilter();
-        const lowShelf = audioContext.createBiquadFilter();
-        const compressor = audioContext.createDynamicsCompressor();
-        
-        // Bass boost - emphasize low frequencies
-        bassBoost.type = 'peaking';
-        bassBoost.frequency.value = 80; // Deep bass frequency
-        bassBoost.Q.value = 2;
-        bassBoost.gain.value = 12; // +12dB boost
-        
-        // Low shelf for additional warmth
-        lowShelf.type = 'lowshelf';
-        lowShelf.frequency.value = 200;
-        lowShelf.gain.value = 8; // +8dB boost
-        
-        // Compressor to control the boosted bass
-        compressor.threshold.value = -20;
-        compressor.knee.value = 5;
-        compressor.ratio.value = 4;
-        compressor.attack.value = 0.01;
-        compressor.release.value = 0.1;
-        
-        gainNode.gain.value = 1.2; // Slight overall boost
-        
-        // Connect the effects chain
-        source.connect(bassBoost);
-        bassBoost.connect(lowShelf);
-        lowShelf.connect(compressor);
-        compressor.connect(gainNode);
-        gainNode.connect(audioContext.destination);
+        if (useBass) {
+            // Create bass boost effect chain
+            const gainNode = audioContext.createGain();
+            const bassBoost = audioContext.createBiquadFilter();
+            const lowShelf = audioContext.createBiquadFilter();
+            const compressor = audioContext.createDynamicsCompressor();
+            
+            // Bass boost - emphasize low frequencies
+            bassBoost.type = 'peaking';
+            bassBoost.frequency.value = 80;
+            bassBoost.Q.value = 2;
+            bassBoost.gain.value = 12;
+            
+            // Low shelf for additional warmth
+            lowShelf.type = 'lowshelf';
+            lowShelf.frequency.value = 200;
+            lowShelf.gain.value = 8;
+            
+            // Compressor to control the boosted bass
+            compressor.threshold.value = -20;
+            compressor.knee.value = 5;
+            compressor.ratio.value = 4;
+            compressor.attack.value = 0.01;
+            compressor.release.value = 0.1;
+            
+            gainNode.gain.value = 1.2;
+            
+            // Connect the effects chain
+            source.connect(bassBoost);
+            bassBoost.connect(lowShelf);
+            lowShelf.connect(compressor);
+            compressor.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+        } else {
+            // Direct connection for normal/fast/slow
+            source.connect(audioContext.destination);
+        }
         
         const offset = pauseTime;
         source.start(0, offset);
@@ -232,14 +235,9 @@ function createVoiceNote(audioFile, index) {
     function pauseAudio() {
         if (!isPlaying) return;
         
-        if (currentEffect === 'chopped') {
-            if (chopInterval) {
-                clearTimeout(chopInterval);
-                chopInterval = null;
-            }
-        } else {
-            pauseTime = (audioContext.currentTime - startTime) % audioBuffer.duration;
-        }
+        // Always update pause time based on current playback position
+        const playbackRate = currentEffect === 'fast' ? 1.5 : currentEffect === 'slow' ? 0.75 : 1;
+        pauseTime = ((audioContext.currentTime - startTime) * playbackRate) % audioBuffer.duration;
         
         if (source) {
             source.stop();
@@ -285,14 +283,14 @@ function createVoiceNote(audioFile, index) {
                 currentlyPlaying.stop();
             }
             
-            if (currentEffect === 'deep bass') {
-                playDeepBassEffect();
+            if (currentEffect === 'bass') {
+                playAudioWithEffect(1, true);
             } else if (currentEffect === 'fast') {
-                playAudio(1.5);
+                playAudioWithEffect(1.5, false);
             } else if (currentEffect === 'slow') {
-                playAudio(0.75);
+                playAudioWithEffect(0.75, false);
             } else {
-                playAudio(1);
+                playAudioWithEffect(1, false);
             }
             
             currentlyPlaying = {
@@ -318,15 +316,17 @@ function createVoiceNote(audioFile, index) {
                 currentEffect = effect;
                 
                 if (isPlaying) {
+                    // Seamlessly switch effect while playing
                     pauseAudio();
-                    pauseTime = 0;
                     
-                    if (effect === 'deep bass') {
-                        playDeepBassEffect();
+                    if (effect === 'bass') {
+                        playAudioWithEffect(1, true);
                     } else if (effect === 'fast') {
-                        playAudio(1.5);
+                        playAudioWithEffect(1.5, false);
                     } else if (effect === 'slow') {
-                        playAudio(0.75);
+                        playAudioWithEffect(0.75, false);
+                    } else {
+                        playAudioWithEffect(1, false);
                     }
                 }
             }
