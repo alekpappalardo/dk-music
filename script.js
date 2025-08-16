@@ -45,6 +45,22 @@ function createWaveformBars() {
     return bars;
 }
 
+function getRandomColor() {
+    const colors = [
+        '#075e54', // Original WhatsApp green
+        '#128c7e', // Lighter green
+        '#25d366', // WhatsApp light green
+        '#34b7f1', // Telegram blue
+        '#7b68ee', // Medium slate blue
+        '#ff6b6b', // Coral red
+        '#4ecdc4', // Turquoise
+        '#45b7d1', // Sky blue
+        '#96ceb4', // Mint green
+        '#feca57', // Orange yellow
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+}
+
 function createVoiceNote(audioFile, index) {
     const container = document.getElementById('voice-notes-container');
     const voiceNote = document.createElement('div');
@@ -53,13 +69,17 @@ function createVoiceNote(audioFile, index) {
     
     const position = getRandomPosition();
     const rotation = getRandomRotation();
+    const randomColor = getRandomColor();
     
     voiceNote.style.left = `${position.x}px`;
     voiceNote.style.top = `${position.y}px`;
     voiceNote.style.transform = `rotate(${rotation}deg)`;
+    voiceNote.style.background = randomColor;
     
-    // Extract title from filename (remove path and extension)
-    const fileName = audioFile.split('/').pop().replace(/\.[^/.]+$/, '');
+    // Extract and clean title from filename
+    let fileName = audioFile.split('/').pop().replace(/\.[^/.]+$/, '');
+    // Remove Cloudinary ID part (everything after underscore)
+    fileName = fileName.split('_')[0];
     const title = fileName.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     
     voiceNote.innerHTML = `
@@ -449,7 +469,7 @@ function createVoiceNote(audioFile, index) {
         e.stopPropagation();
         e.preventDefault();
         
-        if (!audioBuffer) return;
+        if (!html5Audio.duration && !audioBuffer) return;
         
         const rect = waveformContainer.getBoundingClientRect();
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -596,11 +616,13 @@ function createVoiceNote(audioFile, index) {
         newX = Math.max(0, Math.min(newX, screenWidth - noteWidth));
         newY = Math.max(0, Math.min(newY, screenHeight - noteHeight));
         
-        // Get current rotation (preserve it during drag for smoother feel)
+        // Add smooth rotation during drag based on movement
         const currentRotation = parseFloat(voiceNote.style.transform.match(/rotate\(([-\d.]+)deg\)/)?.[1] || 0);
+        const rotationIncrement = (newVelocityX + newVelocityY) * 0.5; // Smooth rotation based on movement
+        const newRotation = currentRotation + rotationIncrement;
         
-        // Use transform for better performance on mobile - no random rotation during drag
-        voiceNote.style.transform = `translate3d(${newX - elementStartX}px, ${newY - elementStartY}px, 0) rotate(${currentRotation}deg)`;
+        // Use transform for better performance on mobile
+        voiceNote.style.transform = `translate3d(${newX - elementStartX}px, ${newY - elementStartY}px, 0) rotate(${newRotation}deg)`;
         voiceNote.style.left = `${newX}px`;
         voiceNote.style.top = `${newY}px`;
         
@@ -614,100 +636,12 @@ function createVoiceNote(audioFile, index) {
         isDragging = false;
         voiceNote.style.cursor = 'grab';
         voiceNote.style.zIndex = '';
-        voiceNote.style.transform = voiceNote.style.transform.replace('translate3d(0px, 0px, 0)', '');
         
-        // Calculate average velocity from recent history for smoother throws
-        if (voiceNote.velocityHistory && voiceNote.velocityHistory.length > 0) {
-            const recentHistory = voiceNote.velocityHistory.slice(-3);
-            const avgVelocityX = recentHistory.reduce((sum, v) => sum + v.x, 0) / recentHistory.length;
-            const avgVelocityY = recentHistory.reduce((sum, v) => sum + v.y, 0) / recentHistory.length;
-            
-            velocityX = avgVelocityX * 2; // Amplify for better throw feel
-            velocityY = avgVelocityY * 2;
-            
-            // Only animate if thrown with significant force (increase threshold)
-            if (Math.abs(velocityX) > 3 || Math.abs(velocityY) > 3) {
-                animateThrow();
-            }
-        }
+        // Clean up transform - keep only rotation
+        const currentRotation = parseFloat(voiceNote.style.transform.match(/rotate\(([-\d.]+)deg\)/)?.[1] || 0);
+        voiceNote.style.transform = `rotate(${currentRotation}deg)`;
     }
     
-    function animateThrow() {
-        const friction = 0.95;
-        const gravity = 0.3;
-        const bounceDamping = 0.6;
-        const minVelocity = 0.5;
-        const maxVelocity = 15; // Reduced max velocity for gentler throws
-        
-        // Cap velocity for smoother experience
-        velocityX = Math.max(-maxVelocity, Math.min(maxVelocity, velocityX));
-        velocityY = Math.max(-maxVelocity, Math.min(maxVelocity, velocityY));
-        
-        let rotationVelocity = velocityX * 0.1; // Much less rotation
-        let currentRotation = parseFloat(voiceNote.style.transform.match(/rotate\(([-\d.]+)deg\)/)?.[1] || 0);
-        
-        function animate() {
-            velocityX *= friction;
-            velocityY *= friction;
-            velocityY += gravity;
-            rotationVelocity *= friction;
-            
-            let x = parseFloat(voiceNote.style.left);
-            let y = parseFloat(voiceNote.style.top);
-            
-            x += velocityX;
-            y += velocityY;
-            currentRotation += rotationVelocity;
-            
-            const noteWidth = voiceNote.offsetWidth;
-            const noteHeight = voiceNote.offsetHeight;
-            const screenWidth = window.innerWidth;
-            const screenHeight = window.innerHeight;
-            
-            // Bounce off edges with more realistic physics
-            if (x < 0) {
-                x = 0;
-                velocityX = -velocityX * bounceDamping;
-                rotationVelocity *= -0.8;
-            } else if (x + noteWidth > screenWidth) {
-                x = screenWidth - noteWidth;
-                velocityX = -velocityX * bounceDamping;
-                rotationVelocity *= -0.8;
-            }
-            
-            if (y < 0) {
-                y = 0;
-                velocityY = -velocityY * bounceDamping;
-                rotationVelocity *= 0.8;
-            } else if (y + noteHeight > screenHeight) {
-                y = screenHeight - noteHeight;
-                velocityY = -velocityY * bounceDamping;
-                rotationVelocity *= 0.8;
-                
-                // Settle on ground
-                if (Math.abs(velocityY) < 1.5) {
-                    velocityY = 0;
-                    y = screenHeight - noteHeight;
-                }
-            }
-            
-            // Use transform for better performance
-            voiceNote.style.transform = `translate3d(${x - parseFloat(voiceNote.style.left)}px, ${y - parseFloat(voiceNote.style.top)}px, 0) rotate(${currentRotation}deg)`;
-            voiceNote.style.left = `${x}px`;
-            voiceNote.style.top = `${y}px`;
-            
-            // Continue animation while there's significant movement
-            if (Math.abs(velocityX) > minVelocity || Math.abs(velocityY) > minVelocity || Math.abs(rotationVelocity) > 0.5) {
-                animationId = requestAnimationFrame(animate);
-            } else {
-                // Final position cleanup
-                voiceNote.style.transform = `rotate(${currentRotation}deg)`;
-                animationId = null;
-            }
-        }
-        
-        animate();
-    }
     
     voiceNote.addEventListener('mousedown', startDrag);
     voiceNote.addEventListener('touchstart', startDrag, { passive: false });

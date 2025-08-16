@@ -54,7 +54,7 @@ body {
 }
 
 .voice-note.playing {
-    background: #128c7e;
+    filter: brightness(1.2) saturate(1.1);
 }
 
 .play-button {
