@@ -113,7 +113,11 @@ function createVoiceNote(audioFile, index) {
         .catch(error => {
             console.error('Error loading audio:', error);
             voiceNote.style.opacity = '0.5';
-            voiceNote.querySelector('.duration').textContent = 'Error';
+            voiceNote.querySelector('.duration').textContent = 'LFS Error';
+            
+            // Show error details in console
+            console.log('File URL:', audioFile.startsWith('/') ? audioFile : `/audio/${audioFile}`);
+            console.log('Is local:', window.location.hostname === 'localhost');
         });
     
     function playAudio(playbackRate = 1) {
