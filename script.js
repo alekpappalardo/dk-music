@@ -13,6 +13,13 @@ class VoiceNote {
         this.element = null;
         this.hammer = null;
         
+        // Web Audio for bass effect
+        this.audioContext = null;
+        this.source = null;
+        this.bassFilter = null;
+        this.gainNode = null;
+        this.usingWebAudio = false;
+        
         this.audio.addEventListener('loadedmetadata', () => {
             this.updateDuration();
         });
@@ -57,6 +64,7 @@ class VoiceNote {
                     <div class="pause-icon"></div>
                 </div>
                 <div class="waveform-container">
+                    <div class="waveform-highlight"></div>
                     ${this.createWaveformBars()}
                 </div>
                 <span class="duration">0:00</span>
@@ -93,24 +101,77 @@ class VoiceNote {
             });
         });
         
-        // WhatsApp-style scrubbing
-        waveform.addEventListener('mousedown', (e) => this.startScrub(e));
-        waveform.addEventListener('touchstart', (e) => this.startScrub(e));
+        // WhatsApp-style scrubbing with Hammer.js to avoid conflicts
+        this.setupWaveformScrubbing(waveform);
+    }
+    
+    setupWaveformScrubbing(waveform) {
+        // Create separate Hammer instance for waveform only
+        this.waveformHammer = new Hammer(waveform);
+        this.waveformHammer.get('pan').set({ 
+            direction: Hammer.DIRECTION_HORIZONTAL,
+            threshold: 8,   // Slightly higher threshold for more deliberate scrubbing
+            pointers: 1
+        });
         
-        document.addEventListener('mousemove', (e) => this.handleScrub(e));
-        document.addEventListener('touchmove', (e) => this.handleScrub(e));
+        // Disable rotation and vertical pan on waveform
+        this.waveformHammer.get('rotate').set({ enable: false });
+        this.waveformHammer.get('pinch').set({ enable: false });
         
-        document.addEventListener('mouseup', () => this.endScrub());
-        document.addEventListener('touchend', () => this.endScrub());
+        let scrubStarted = false;
+        
+        this.waveformHammer.on('panstart', (e) => {
+            e.srcEvent.stopPropagation(); // Prevent main element dragging
+            scrubStarted = true;
+            waveform.classList.add('scrubbing');
+            this.updateScrubPosition(e);
+            if (navigator.vibrate) navigator.vibrate(5);
+        });
+        
+        this.waveformHammer.on('panmove', (e) => {
+            if (scrubStarted) {
+                e.srcEvent.stopPropagation();
+                this.updateScrubPosition(e);
+            }
+        });
+        
+        this.waveformHammer.on('panend', (e) => {
+            scrubStarted = false;
+            waveform.classList.remove('scrubbing');
+            
+            // Fade out the highlight after scrubbing like WhatsApp
+            const highlight = this.element.querySelector('.waveform-highlight');
+            setTimeout(() => {
+                if (!this.isPlaying) {
+                    highlight.style.opacity = '0.3';
+                }
+            }, 300);
+            
+            e.srcEvent.stopPropagation();
+        });
+        
+        // Also handle simple taps for seeking
+        this.waveformHammer.on('tap', (e) => {
+            e.srcEvent.stopPropagation();
+            this.updateScrubPosition(e);
+            if (navigator.vibrate) navigator.vibrate(5);
+        });
     }
     
     setupGestures() {
         // Use Hammer.js for smooth touch interactions
         this.hammer = new Hammer(this.element);
         
-        // Enable pan and rotate
-        this.hammer.get('pan').set({ direction: Hammer.DIRECTION_ALL });
-        this.hammer.get('rotate').set({ enable: true });
+        // Enable pan and rotate with higher thresholds to prevent twitchy behavior
+        this.hammer.get('pan').set({ 
+            direction: Hammer.DIRECTION_ALL,
+            threshold: 15,  // Higher threshold to prevent accidental movement
+            pointers: 1     // Only single finger for dragging
+        });
+        this.hammer.get('rotate').set({ 
+            enable: true,
+            threshold: 20   // Higher threshold for rotation
+        });
         
         // Store initial position and rotation
         this.initialTransform = {
@@ -180,31 +241,33 @@ class VoiceNote {
         };
     }
     
-    // Audio scrubbing like WhatsApp
-    startScrub(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        this.isScrubbing = true;
-        this.handleScrub(e);
-    }
-    
-    handleScrub(e) {
-        if (!this.isScrubbing) return;
-        
+    // WhatsApp-style scrubbing with visual feedback
+    updateScrubPosition(e) {
         const waveform = this.element.querySelector('.waveform-container');
+        const highlight = this.element.querySelector('.waveform-highlight');
         const rect = waveform.getBoundingClientRect();
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const x = clientX - rect.left;
+        
+        // Get position from Hammer event
+        const clientX = e.center.x;
+        const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
         const progress = Math.max(0, Math.min(1, x / rect.width));
         
-        if (this.audio.duration) {
-            this.audio.currentTime = progress * this.audio.duration;
-            this.updateProgress();
+        // Update visual highlight smoothly like WhatsApp
+        highlight.style.width = `${progress * 100}%`;
+        highlight.style.opacity = '1';
+        
+        // Update audio position if duration is available
+        if (this.audio.duration && !isNaN(this.audio.duration)) {
+            const newTime = progress * this.audio.duration;
+            this.audio.currentTime = newTime;
+            
+            // Update duration display immediately for responsive feel
+            const remaining = this.audio.duration - newTime;
+            this.element.querySelector('.duration').textContent = this.formatTime(remaining);
+            
+            // Update progress bar to match scrub position
+            this.element.querySelector('.progress-bar').style.width = `${progress * 100}%`;
         }
-    }
-    
-    endScrub() {
-        this.isScrubbing = false;
     }
     
     togglePlay() {
@@ -245,7 +308,7 @@ class VoiceNote {
         this.updateProgress();
     }
     
-    toggleEffect(effect) {
+    async toggleEffect(effect) {
         const btn = this.element.querySelector(`[data-effect="${effect}"]`);
         const allBtns = this.element.querySelectorAll('.effect-btn');
         
@@ -254,46 +317,86 @@ class VoiceNote {
             this.currentEffect = 'normal';
             btn.classList.remove('active');
             this.audio.playbackRate = 1;
-            this.removeAudioFilter();
+            this.disableWebAudio();
         } else {
             // Turn on new effect
             allBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             this.currentEffect = effect;
-            this.applyEffect(effect);
+            await this.applyEffect(effect);
         }
         
         if (navigator.vibrate) navigator.vibrate(8);
     }
     
-    applyEffect(effect) {
+    async applyEffect(effect) {
         switch (effect) {
             case 'fast':
                 this.audio.playbackRate = 1.5;
-                this.removeAudioFilter();
+                this.disableWebAudio();
                 break;
             case 'slow':
                 this.audio.playbackRate = 0.75;
-                this.removeAudioFilter();
+                this.disableWebAudio();
                 break;
             case 'bass':
                 this.audio.playbackRate = 1;
-                this.applyBassFilter();
+                await this.enableBassEffect();
                 break;
             default:
                 this.audio.playbackRate = 1;
-                this.removeAudioFilter();
+                this.disableWebAudio();
         }
     }
     
-    applyBassFilter() {
-        // Simple bass boost using CSS filter as fallback
-        // For better bass, we'd need Web Audio API, but keeping it simple
-        this.element.style.filter = 'contrast(1.2) saturate(1.3)';
+    async enableBassEffect() {
+        try {
+            if (!this.audioContext) {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            // Connect HTML5 audio to Web Audio for processing
+            if (!this.source) {
+                this.source = this.audioContext.createMediaElementSource(this.audio);
+                
+                // Create bass boost filter chain
+                this.bassFilter = this.audioContext.createBiquadFilter();
+                this.bassFilter.type = 'lowshelf';
+                this.bassFilter.frequency.value = 150;
+                this.bassFilter.gain.value = 15; // Heavy bass boost
+                
+                // Additional low-end enhancement
+                this.subBassFilter = this.audioContext.createBiquadFilter();
+                this.subBassFilter.type = 'peaking';
+                this.subBassFilter.frequency.value = 60;
+                this.subBassFilter.Q.value = 1;
+                this.subBassFilter.gain.value = 12;
+                
+                // Gain control
+                this.gainNode = this.audioContext.createGain();
+                this.gainNode.gain.value = 1.3;
+                
+                // Connect the chain
+                this.source.connect(this.bassFilter);
+                this.bassFilter.connect(this.subBassFilter);
+                this.subBassFilter.connect(this.gainNode);
+                this.gainNode.connect(this.audioContext.destination);
+            }
+            
+            this.usingWebAudio = true;
+        } catch (error) {
+            console.error('Web Audio not supported:', error);
+            // Fallback to visual effect
+            this.element.style.filter = 'contrast(1.3) saturate(1.5) brightness(1.1)';
+        }
     }
     
-    removeAudioFilter() {
+    disableWebAudio() {
+        this.usingWebAudio = false;
         this.element.style.filter = '';
+        
+        // Web Audio chain remains connected for bass effect
+        // Only disconnect when stopping completely
     }
     
     updateDuration() {
@@ -309,8 +412,16 @@ class VoiceNote {
         const progress = (this.audio.currentTime / this.audio.duration) * 100;
         const remaining = this.audio.duration - this.audio.currentTime;
         
+        // Update both progress bar and highlight during playback
         this.element.querySelector('.progress-bar').style.width = `${progress}%`;
         this.element.querySelector('.duration').textContent = this.formatTime(remaining);
+        
+        // Keep highlight synchronized during playback like WhatsApp
+        const highlight = this.element.querySelector('.waveform-highlight');
+        if (this.isPlaying) {
+            highlight.style.width = `${progress}%`;
+            highlight.style.opacity = '1';
+        }
     }
     
     formatTime(seconds) {
