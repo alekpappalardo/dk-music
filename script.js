@@ -60,13 +60,6 @@ class WhatsAppVoiceMessage {
         messageDiv.innerHTML = `
             <div class="message-meta">
                 <div class="message-title">${title}</div>
-                <div class="message-timestamp">
-                    16/08/2025
-                    <div class="read-receipts">
-                        <div class="tick"></div>
-                        <div class="tick"></div>
-                    </div>
-                </div>
             </div>
             
             <div class="voice-controls">
@@ -98,7 +91,7 @@ class WhatsAppVoiceMessage {
     
     createWaveformBars() {
         let bars = '';
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 30; i++) {
             bars += '<div class="waveform-bar"></div>';
         }
         return bars;
@@ -128,33 +121,47 @@ class WhatsAppVoiceMessage {
     }
     
     setupWaveformScrubbing(waveform) {
-        // Use Hammer.js for precise touch handling
-        this.waveformHammer = new Hammer(waveform);
-        this.waveformHammer.get('pan').set({ 
-            direction: Hammer.DIRECTION_HORIZONTAL,
-            threshold: 1  // Very sensitive for precise scrubbing
-        });
+        // Use simpler touch events for better WhatsApp-like experience
+        let isDragging = false;
         
-        this.waveformHammer.on('panstart', (e) => {
+        // Mouse events
+        waveform.addEventListener('mousedown', (e) => {
+            isDragging = true;
             this.isScrubbing = true;
             this.updateScrubPosition(e);
             if (navigator.vibrate) navigator.vibrate(3);
         });
         
-        this.waveformHammer.on('panmove', (e) => {
-            if (this.isScrubbing) {
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging && this.isScrubbing) {
                 this.updateScrubPosition(e);
             }
         });
         
-        this.waveformHammer.on('panend', () => {
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
             this.isScrubbing = false;
         });
         
-        // Handle taps for instant seeking
-        this.waveformHammer.on('tap', (e) => {
-            this.updateScrubPosition(e);
+        // Touch events  
+        waveform.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isDragging = true;
+            this.isScrubbing = true;
+            this.updateScrubPosition(e.touches[0]);
             if (navigator.vibrate) navigator.vibrate(3);
+        });
+        
+        document.addEventListener('touchmove', (e) => {
+            if (isDragging && this.isScrubbing) {
+                e.preventDefault();
+                this.updateScrubPosition(e.touches[0]);
+            }
+        });
+        
+        document.addEventListener('touchend', () => {
+            isDragging = false;
+            this.isScrubbing = false;
         });
     }
     
@@ -162,7 +169,9 @@ class WhatsAppVoiceMessage {
         const waveform = this.element.querySelector('.waveform-container');
         const rect = waveform.getBoundingClientRect();
         
-        const x = Math.max(0, Math.min(e.center.x - rect.left, rect.width));
+        // Get x position from mouse or touch event
+        const clientX = e.clientX || e.pageX;
+        const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
         const progress = x / rect.width;
         
         if (this.audio.duration && !isNaN(this.audio.duration)) {
@@ -269,6 +278,11 @@ class WhatsAppVoiceMessage {
         try {
             if (!this.audioContext) {
                 this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Resume audio context if needed (required for some browsers)
+                if (this.audioContext.state === 'suspended') {
+                    await this.audioContext.resume();
+                }
             }
             
             if (!this.isWebAudioSetup) {
@@ -278,19 +292,19 @@ class WhatsAppVoiceMessage {
                 // Create powerful bass boost chain
                 const lowShelf = this.audioContext.createBiquadFilter();
                 lowShelf.type = 'lowshelf';
-                lowShelf.frequency.value = 200;
-                lowShelf.gain.value = 18; // Heavy bass boost
+                lowShelf.frequency.value = 180;
+                lowShelf.gain.value = 20; // Heavy bass boost
                 
                 const peaking = this.audioContext.createBiquadFilter();
                 peaking.type = 'peaking';
-                peaking.frequency.value = 60;
-                peaking.Q.value = 1.5;
-                peaking.gain.value = 15; // Deep sub-bass
+                peaking.frequency.value = 50;
+                peaking.Q.value = 2;
+                peaking.gain.value = 18; // Deep sub-bass
                 
                 const gain = this.audioContext.createGain();
-                gain.gain.value = 1.4; // Volume boost
+                gain.gain.value = 1.5; // Volume boost
                 
-                // Connect the chain
+                // Connect the chain: source -> lowShelf -> peaking -> gain -> destination
                 this.source.connect(lowShelf);
                 lowShelf.connect(peaking);
                 peaking.connect(gain);
@@ -299,10 +313,11 @@ class WhatsAppVoiceMessage {
                 this.bassChain = { lowShelf, peaking, gain };
                 this.isWebAudioSetup = true;
                 
-                console.log('Bass effect connected');
+                console.log('Bass effect setup complete - should hear heavy bass now');
             }
         } catch (error) {
-            console.error('Bass effect failed:', error);
+            console.error('Bass effect setup failed:', error);
+            // Continue without bass effect
         }
     }
     

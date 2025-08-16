@@ -10,74 +10,39 @@ body {
     color: #d1d7db;
     overflow-x: hidden;
     height: 100vh;
-    display: flex;
-    flex-direction: column;
-}
-
-/* WhatsApp-style header */
-.chat-header {
-    background: #202c33;
-    padding: 12px 16px;
-    border-bottom: 1px solid #2a3942;
-    display: flex;
-    align-items: center;
-    min-height: 60px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-}
-
-.contact-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.contact-avatar img {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-}
-
-.contact-name {
-    color: #e9edef;
-    font-size: 16px;
-    font-weight: 500;
-    line-height: 1.3;
-}
-
-.contact-status {
-    color: #8696a0;
-    font-size: 13px;
-    line-height: 1.3;
+    margin: 0;
+    padding: 0;
 }
 
 /* Chat container */
 .chat-container {
-    flex: 1;
+    height: 100vh;
     background: #0b141a;
     background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iNTAiIGN5PSI1MCIgcj0iMSIgZmlsbD0iIzFhMjUyZiIgb3BhY2l0eT0iMC4zIi8+PC9zdmc+');
     background-size: 100px 100px;
     overflow-y: auto;
-    padding: 8px 0;
+    padding: 20px 0;
+    display: flex;
+    justify-content: center;
 }
 
 .messages-container {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: 0 8px;
-    max-width: 100%;
+    gap: 8px;
+    padding: 0 24px;
+    max-width: 600px;
+    width: 100%;
 }
 
 /* WhatsApp message bubble */
 .voice-message {
     background: #005c4b;
     border-radius: 7.5px;
-    padding: 6px 9px 8px 9px;
-    margin: 2px 0;
-    max-width: 360px;
-    min-width: 220px;
+    padding: 10px 12px 12px 12px;
+    margin: 4px 0;
+    max-width: 480px;
+    min-width: 320px;
     align-self: flex-end;
     position: relative;
     box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
@@ -99,43 +64,13 @@ body {
 
 /* Message metadata */
 .message-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
 
 .message-title {
     color: #8696a0;
     font-size: 12px;
     font-weight: 500;
-}
-
-.message-timestamp {
-    color: #8696a0;
-    font-size: 11px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-/* Read receipts (blue ticks) */
-.read-receipts {
-    display: flex;
-    gap: 1px;
-}
-
-.tick {
-    width: 12px;
-    height: 8px;
-    background: #53bdeb;
-    mask: url('data:image/svg+xml,<svg viewBox="0 0 16 11" xmlns="http://www.w3.org/2000/svg"><path d="M11.071 1.243L15.314 5.486L10.071 10.729L8.657 9.314L11.314 6.657L5.657 1L7.071-0.414L11.071 1.243ZM5.657 6.657L8.314 9.314L6.9 10.729L1.657 5.486L5.9 1.243L7.314 2.657L5.657 6.657Z" fill="currentColor"/></svg>') no-repeat center;
-    mask-size: contain;
-}
-
-.tick.single {
-    mask: url('data:image/svg+xml,<svg viewBox="0 0 12 9" xmlns="http://www.w3.org/2000/svg"><path d="M11.071 0.243L10.071 1.243L4.071 7.243L1.414 4.586L0 6L4.071 10.071L11.071 0.243Z" fill="currentColor"/></svg>') no-repeat center;
-    mask-size: contain;
 }
 
 /* Voice message controls */
@@ -212,54 +147,69 @@ body {
 /* WhatsApp-style waveform */
 .waveform-container {
     flex: 1;
-    height: 32px;
+    height: 34px;
     display: flex;
     align-items: center;
-    gap: 1.5px;
+    gap: 2px;
     position: relative;
     cursor: pointer;
-    margin: 0 4px;
-    padding: 4px 0;
+    margin: 0 6px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.waveform-container:hover {
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .waveform-container:active {
     background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
 }
 
 .waveform-bar {
-    width: 2px;
+    width: 3px;
     background: rgba(233, 237, 239, 0.6);
-    border-radius: 1px;
-    transition: all 0.1s ease;
+    border-radius: 1.5px;
+    transition: background 0.15s ease;
     flex-shrink: 0;
 }
 
 .voice-message.playing .waveform-bar {
-    background: rgba(233, 237, 239, 0.9);
+    background: rgba(233, 237, 239, 0.85);
 }
 
-/* Individual bar heights like WhatsApp */
-.waveform-bar:nth-child(1) { height: 8px; }
-.waveform-bar:nth-child(2) { height: 16px; }
-.waveform-bar:nth-child(3) { height: 12px; }
-.waveform-bar:nth-child(4) { height: 20px; }
-.waveform-bar:nth-child(5) { height: 14px; }
-.waveform-bar:nth-child(6) { height: 18px; }
-.waveform-bar:nth-child(7) { height: 10px; }
-.waveform-bar:nth-child(8) { height: 22px; }
-.waveform-bar:nth-child(9) { height: 16px; }
-.waveform-bar:nth-child(10) { height: 18px; }
-.waveform-bar:nth-child(11) { height: 12px; }
-.waveform-bar:nth-child(12) { height: 20px; }
-.waveform-bar:nth-child(13) { height: 14px; }
-.waveform-bar:nth-child(14) { height: 16px; }
-.waveform-bar:nth-child(15) { height: 10px; }
-.waveform-bar:nth-child(16) { height: 24px; }
-.waveform-bar:nth-child(17) { height: 18px; }
-.waveform-bar:nth-child(18) { height: 14px; }
-.waveform-bar:nth-child(19) { height: 12px; }
-.waveform-bar:nth-child(20) { height: 16px; }
+/* More bars for better scrubbing precision - like real WhatsApp */
+.waveform-bar:nth-child(1) { height: 6px; }
+.waveform-bar:nth-child(2) { height: 14px; }
+.waveform-bar:nth-child(3) { height: 10px; }
+.waveform-bar:nth-child(4) { height: 18px; }
+.waveform-bar:nth-child(5) { height: 12px; }
+.waveform-bar:nth-child(6) { height: 16px; }
+.waveform-bar:nth-child(7) { height: 8px; }
+.waveform-bar:nth-child(8) { height: 20px; }
+.waveform-bar:nth-child(9) { height: 14px; }
+.waveform-bar:nth-child(10) { height: 16px; }
+.waveform-bar:nth-child(11) { height: 10px; }
+.waveform-bar:nth-child(12) { height: 18px; }
+.waveform-bar:nth-child(13) { height: 12px; }
+.waveform-bar:nth-child(14) { height: 14px; }
+.waveform-bar:nth-child(15) { height: 8px; }
+.waveform-bar:nth-child(16) { height: 22px; }
+.waveform-bar:nth-child(17) { height: 16px; }
+.waveform-bar:nth-child(18) { height: 12px; }
+.waveform-bar:nth-child(19) { height: 10px; }
+.waveform-bar:nth-child(20) { height: 14px; }
+.waveform-bar:nth-child(21) { height: 18px; }
+.waveform-bar:nth-child(22) { height: 8px; }
+.waveform-bar:nth-child(23) { height: 16px; }
+.waveform-bar:nth-child(24) { height: 12px; }
+.waveform-bar:nth-child(25) { height: 20px; }
+.waveform-bar:nth-child(26) { height: 14px; }
+.waveform-bar:nth-child(27) { height: 10px; }
+.waveform-bar:nth-child(28) { height: 16px; }
+.waveform-bar:nth-child(29) { height: 12px; }
+.waveform-bar:nth-child(30) { height: 6px; }
 
 /* Waveform progress highlight */
 .waveform-progress {
@@ -323,20 +273,6 @@ body {
     font-weight: 600;
 }
 
-/* Message info footer */
-.message-footer {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 4px;
-    margin-top: 4px;
-    margin-right: -2px;
-}
-
-.message-time {
-    color: #8696a0;
-    font-size: 11px;
-}
 
 /* Responsive design */
 @media (max-width: 480px) {
