@@ -4,9 +4,9 @@ let currentlyPlaying = null;
 async function loadAudioFiles() {
     // For now, manually specify your audio file
     // Replace this with your actual audio filename
-    // Use Cloudinary URL for reliable hosting
+    // Use Cloudinary URL with optimizations for fast loading
     audioFiles = [
-        'https://res.cloudinary.com/dprjkfgqf/video/upload/v1755302946/megl-accussi_km8uea.wav'
+        'https://res.cloudinary.com/dprjkfgqf/video/upload/ac_none,br_128k,f_mp3/v1755302946/megl-accussi_km8uea.wav'
     ];
     
     if (audioFiles.length > 0) {
@@ -82,7 +82,12 @@ function createVoiceNote(audioFile, index) {
         <div class="progress-bar"></div>
     `;
     
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    // Use HTML5 Audio for instant loading, Web Audio for effects
+    const html5Audio = new Audio();
+    html5Audio.preload = 'metadata'; // Load metadata immediately
+    html5Audio.src = audioFile;
+    
+    let audioContext = null;
     let audioBuffer = null;
     let source = null;
     let isPlaying = false;
@@ -90,34 +95,74 @@ function createVoiceNote(audioFile, index) {
     let pauseTime = 0;
     let currentEffect = 'normal';
     let chopInterval = null;
+    let useWebAudio = false; // Start with HTML5, switch to Web Audio for effects
     
-    fetch(audioFile)
-        .then(response => {
-            console.log('Audio fetch response:', response.status, response.statusText);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    // Instant UI feedback - show duration as soon as metadata loads
+    html5Audio.addEventListener('loadedmetadata', () => {
+        voiceNote.querySelector('.duration').textContent = formatDuration(html5Audio.duration);
+        console.log('Audio metadata loaded instantly, duration:', html5Audio.duration);
+    });
+    
+    html5Audio.addEventListener('canplaythrough', () => {
+        console.log('Audio can play through without interruption');
+    });
+    
+    html5Audio.addEventListener('error', (e) => {
+        console.error('HTML5 Audio error:', e);
+        voiceNote.style.opacity = '0.5';
+        voiceNote.querySelector('.duration').textContent = 'Error';
+    });
+    
+    // Lazy load Web Audio API only when effects are needed
+    async function initWebAudio() {
+        if (audioContext && audioBuffer) return;
+        
+        try {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const response = await fetch(audioFile);
+            const data = await response.arrayBuffer();
+            audioBuffer = await audioContext.decodeAudioData(data);
+            console.log('Web Audio buffer loaded for effects');
+        } catch (error) {
+            console.error('Error loading Web Audio:', error);
+        }
+    }
+    
+    // HTML5 Audio playback for normal/fast/slow (instant)
+    function playHTML5Audio(playbackRate = 1) {
+        html5Audio.currentTime = pauseTime;
+        html5Audio.playbackRate = playbackRate;
+        html5Audio.play();
+        isPlaying = true;
+        voiceNote.classList.add('playing');
+        useWebAudio = false;
+        
+        startTime = Date.now() / 1000 - pauseTime;
+        updateProgressHTML5();
+    }
+    
+    function updateProgressHTML5() {
+        if (!isPlaying || useWebAudio) return;
+        
+        const progressInterval = setInterval(() => {
+            if (!isPlaying || useWebAudio) {
+                clearInterval(progressInterval);
+                return;
             }
-            return response.arrayBuffer();
-        })
-        .then(data => {
-            console.log('Audio data loaded, size:', data.byteLength);
-            return audioContext.decodeAudioData(data);
-        })
-        .then(buffer => {
-            audioBuffer = buffer;
-            const duration = buffer.duration;
-            voiceNote.querySelector('.duration').textContent = formatDuration(duration);
-            console.log('Audio loaded successfully, duration:', duration);
-        })
-        .catch(error => {
-            console.error('Error loading audio:', error);
-            voiceNote.style.opacity = '0.5';
-            voiceNote.querySelector('.duration').textContent = 'LFS Error';
             
-            // Show error details in console
-            console.log('File URL:', audioFile);
-            console.log('Error details:', error.message);
-        });
+            const currentTime = html5Audio.currentTime;
+            const duration = html5Audio.duration;
+            const progress = (currentTime / duration) * 100;
+            
+            voiceNote.querySelector('.progress-bar').style.width = `${progress}%`;
+            voiceNote.querySelector('.duration').textContent = formatDuration(duration - currentTime);
+            
+            if (html5Audio.ended) {
+                stopAudio();
+                clearInterval(progressInterval);
+            }
+        }, 100);
+    }
     
     function playAudio(playbackRate = 1) {
         if (!audioBuffer) return;
@@ -211,6 +256,11 @@ function createVoiceNote(audioFile, index) {
     }
     
     function stopAudio() {
+        // Stop HTML5 Audio
+        html5Audio.pause();
+        html5Audio.currentTime = 0;
+        
+        // Stop Web Audio
         if (source) {
             source.stop();
             source.disconnect();
@@ -223,6 +273,7 @@ function createVoiceNote(audioFile, index) {
         }
         
         isPlaying = false;
+        useWebAudio = false;
         voiceNote.classList.remove('playing');
         voiceNote.querySelector('.progress-bar').style.width = '0%';
         pauseTime = 0;
@@ -230,6 +281,29 @@ function createVoiceNote(audioFile, index) {
         if (currentlyPlaying && currentlyPlaying.element === voiceNote) {
             currentlyPlaying = null;
         }
+    }
+    
+    function pauseAudioHybrid() {
+        if (!isPlaying) return;
+        
+        if (useWebAudio) {
+            // Web Audio pause logic
+            const playbackRate = currentEffect === 'fast' ? 1.5 : currentEffect === 'slow' ? 0.75 : 1;
+            pauseTime = ((audioContext.currentTime - startTime) * playbackRate) % audioBuffer.duration;
+            
+            if (source) {
+                source.stop();
+                source.disconnect();
+                source = null;
+            }
+        } else {
+            // HTML5 Audio pause
+            html5Audio.pause();
+            pauseTime = html5Audio.currentTime;
+        }
+        
+        isPlaying = false;
+        voiceNote.classList.remove('playing');
     }
     
     function pauseAudio() {
@@ -301,24 +375,34 @@ function createVoiceNote(audioFile, index) {
     }
     
     const playButton = voiceNote.querySelector('.play-button');
-    playButton.addEventListener('click', (e) => {
+    playButton.addEventListener('click', async (e) => {
         e.stopPropagation();
         
         if (isPlaying) {
-            pauseAudio();
+            pauseAudioHybrid();
         } else {
             if (currentlyPlaying && currentlyPlaying.element !== voiceNote) {
                 currentlyPlaying.stop();
             }
             
             if (currentEffect === 'bass') {
-                playAudioWithEffect(1, true);
+                // Bass effect requires Web Audio - load it if needed
+                await initWebAudio();
+                if (audioBuffer) {
+                    playAudioWithEffect(1, true);
+                } else {
+                    // Fallback to HTML5 if Web Audio fails
+                    playHTML5Audio(1);
+                }
             } else if (currentEffect === 'fast') {
-                playAudioWithEffect(1.5, false);
+                // Fast can use HTML5 Audio for instant playback
+                playHTML5Audio(1.5);
             } else if (currentEffect === 'slow') {
-                playAudioWithEffect(0.75, false);
+                // Slow can use HTML5 Audio for instant playback
+                playHTML5Audio(0.75);
             } else {
-                playAudioWithEffect(1, false);
+                // Normal playback uses HTML5 for instant start
+                playHTML5Audio(1);
             }
             
             currentlyPlaying = {
@@ -371,9 +455,12 @@ function createVoiceNote(audioFile, index) {
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clickX = clientX - rect.left;
         const progress = Math.max(0, Math.min(1, clickX / rect.width));
-        const newTime = progress * audioBuffer.duration;
         
-        pauseTime = Math.max(0, Math.min(newTime, audioBuffer.duration));
+        // Use HTML5 duration if available, otherwise estimate
+        const duration = html5Audio.duration || (audioBuffer ? audioBuffer.duration : 60);
+        const newTime = progress * duration;
+        
+        pauseTime = Math.max(0, Math.min(newTime, duration));
         
         if (isPlaying) {
             // Restart with new position and current effect
