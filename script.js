@@ -249,6 +249,34 @@ function createVoiceNote(audioFile, index) {
         voiceNote.classList.remove('playing');
     }
     
+    function switchEffectWhilePlaying(newEffect) {
+        if (!isPlaying) return;
+        
+        // Calculate current position
+        const playbackRate = currentEffect === 'fast' ? 1.5 : currentEffect === 'slow' ? 0.75 : 1;
+        pauseTime = ((audioContext.currentTime - startTime) * playbackRate) % audioBuffer.duration;
+        
+        // Stop current source
+        if (source) {
+            source.stop();
+            source.disconnect();
+        }
+        
+        // Update effect
+        currentEffect = newEffect;
+        
+        // Start with new effect immediately
+        if (newEffect === 'bass') {
+            playAudioWithEffect(1, true);
+        } else if (newEffect === 'fast') {
+            playAudioWithEffect(1.5, false);
+        } else if (newEffect === 'slow') {
+            playAudioWithEffect(0.75, false);
+        } else {
+            playAudioWithEffect(1, false);
+        }
+    }
+    
     function updateProgress() {
         if (!isPlaying) return;
         
@@ -307,30 +335,59 @@ function createVoiceNote(audioFile, index) {
             
             const effect = btn.dataset.effect;
             
-            effectButtons.forEach(b => b.classList.remove('active'));
-            
             if (currentEffect === effect) {
-                currentEffect = 'normal';
+                // Toggle off - go back to normal
+                effectButtons.forEach(b => b.classList.remove('active'));
+                if (isPlaying) {
+                    switchEffectWhilePlaying('normal');
+                } else {
+                    currentEffect = 'normal';
+                }
             } else {
+                // Switch to new effect
+                effectButtons.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-                currentEffect = effect;
                 
                 if (isPlaying) {
-                    // Seamlessly switch effect while playing
-                    pauseAudio();
-                    
-                    if (effect === 'bass') {
-                        playAudioWithEffect(1, true);
-                    } else if (effect === 'fast') {
-                        playAudioWithEffect(1.5, false);
-                    } else if (effect === 'slow') {
-                        playAudioWithEffect(0.75, false);
-                    } else {
-                        playAudioWithEffect(1, false);
-                    }
+                    switchEffectWhilePlaying(effect);
+                } else {
+                    currentEffect = effect;
                 }
             }
         });
+    });
+    
+    // Add WhatsApp-style scrubbing functionality
+    const waveformContainer = voiceNote.querySelector('.waveform-container');
+    waveformContainer.addEventListener('click', (e) => {
+        e.stopPropagation();
+        
+        if (!audioBuffer) return;
+        
+        const rect = waveformContainer.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const progress = clickX / rect.width;
+        const newTime = progress * audioBuffer.duration;
+        
+        pauseTime = Math.max(0, Math.min(newTime, audioBuffer.duration));
+        
+        if (isPlaying) {
+            // Restart with new position and current effect
+            if (currentEffect === 'bass') {
+                playAudioWithEffect(1, true);
+            } else if (currentEffect === 'fast') {
+                playAudioWithEffect(1.5, false);
+            } else if (currentEffect === 'slow') {
+                playAudioWithEffect(0.75, false);
+            } else {
+                playAudioWithEffect(1, false);
+            }
+        } else {
+            // Update progress bar to show new position
+            const progressPercent = (pauseTime / audioBuffer.duration) * 100;
+            voiceNote.querySelector('.progress-bar').style.width = `${progressPercent}%`;
+            voiceNote.querySelector('.duration').textContent = formatDuration(audioBuffer.duration - pauseTime);
+        }
     });
     
     let isDragging = false;
@@ -345,7 +402,9 @@ function createVoiceNote(audioFile, index) {
     let animationId = null;
     
     function startDrag(e) {
-        if (e.target.classList.contains('effect-btn') || e.target.closest('.play-button')) return;
+        if (e.target.classList.contains('effect-btn') || 
+            e.target.closest('.play-button') || 
+            e.target.closest('.waveform-container')) return;
         
         isDragging = true;
         voiceNote.style.cursor = 'grabbing';

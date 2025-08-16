@@ -118,6 +118,13 @@ body {
     gap: 2px;
     position: relative;
     overflow: hidden;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: background-color 0.2s ease;
+}
+
+.waveform-container:hover {
+    background: rgba(255,255,255,0.05);
 }
 
 .waveform-bar {
