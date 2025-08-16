@@ -1,8 +1,7 @@
 let audioFiles = [];
 let currentlyPlaying = null;
 
-// Simple audio architecture - just use HTML5 Audio for everything
-class VoiceNote {
+class WhatsAppVoiceMessage {
     constructor(audioFile, index) {
         this.audioFile = audioFile;
         this.index = index;
@@ -11,285 +10,203 @@ class VoiceNote {
         this.isPlaying = false;
         this.currentEffect = 'normal';
         this.element = null;
-        this.hammer = null;
         
         // Web Audio for bass effect
         this.audioContext = null;
         this.source = null;
-        this.bassFilter = null;
-        this.gainNode = null;
-        this.usingWebAudio = false;
+        this.bassChain = null;
+        this.isWebAudioSetup = false;
         
+        // Scrubbing state
+        this.waveformHammer = null;
+        this.isScrubbing = false;
+        
+        this.setupAudioEvents();
+        this.createMessage();
+        this.setupControls();
+    }
+    
+    setupAudioEvents() {
         this.audio.addEventListener('loadedmetadata', () => {
             this.updateDuration();
         });
         
         this.audio.addEventListener('timeupdate', () => {
-            this.updateProgress();
+            if (!this.isScrubbing) {
+                this.updateProgress();
+            }
         });
         
         this.audio.addEventListener('ended', () => {
             this.stop();
         });
         
-        this.createElements();
-        this.setupGestures();
+        this.audio.addEventListener('error', (e) => {
+            console.error('Audio error:', e);
+        });
     }
     
-    createElements() {
-        const container = document.getElementById('voice-notes-container');
-        const voiceNote = document.createElement('div');
-        voiceNote.className = 'voice-note';
-        voiceNote.id = `voice-note-${this.index}`;
-        
-        const position = this.getRandomPosition();
-        const rotation = Math.random() * 360;
-        const randomColor = this.getRandomColor();
-        
-        voiceNote.style.left = `${position.x}px`;
-        voiceNote.style.top = `${position.y}px`;
-        voiceNote.style.transform = `rotate(${rotation}deg)`;
-        voiceNote.style.background = randomColor;
+    createMessage() {
+        const container = document.getElementById('messages-container');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'voice-message';
+        messageDiv.id = `voice-message-${this.index}`;
         
         // Extract title from filename
         let fileName = this.audioFile.split('/').pop().replace(/\.[^/.]+$/, '');
         fileName = fileName.split('_')[0];
         const title = fileName.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
         
-        voiceNote.innerHTML = `
-            <div class="voice-note-title">${title}</div>
-            <div class="audio-controls">
+        messageDiv.innerHTML = `
+            <div class="message-meta">
+                <div class="message-title">${title}</div>
+                <div class="message-timestamp">
+                    16/08/2025
+                    <div class="read-receipts">
+                        <div class="tick"></div>
+                        <div class="tick"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="voice-controls">
                 <div class="play-button">
                     <div class="play-icon"></div>
                     <div class="pause-icon"></div>
                 </div>
+                
                 <div class="waveform-container">
-                    <div class="waveform-highlight"></div>
+                    <div class="waveform-progress">
+                        ${this.createWaveformBars()}
+                    </div>
                     ${this.createWaveformBars()}
                 </div>
-                <span class="duration">0:00</span>
+                
+                <div class="voice-duration">0:00</div>
             </div>
+            
             <div class="effect-buttons">
                 <button class="effect-btn" data-effect="bass">bass</button>
                 <button class="effect-btn" data-effect="fast">fast</button>
                 <button class="effect-btn" data-effect="slow">slow</button>
             </div>
-            <div class="progress-bar"></div>
         `;
         
-        this.element = voiceNote;
-        container.appendChild(voiceNote);
-        
-        // Setup simple click handlers
-        this.setupAudioControls();
+        this.element = messageDiv;
+        container.appendChild(messageDiv);
     }
     
-    setupAudioControls() {
+    createWaveformBars() {
+        let bars = '';
+        for (let i = 0; i < 20; i++) {
+            bars += '<div class="waveform-bar"></div>';
+        }
+        return bars;
+    }
+    
+    setupControls() {
         const playButton = this.element.querySelector('.play-button');
         const effectButtons = this.element.querySelectorAll('.effect-btn');
-        const waveform = this.element.querySelector('.waveform-container');
+        const waveformContainer = this.element.querySelector('.waveform-container');
         
+        // Play/pause button
         playButton.addEventListener('click', (e) => {
             e.stopPropagation();
             this.togglePlay();
         });
         
+        // Effect buttons
         effectButtons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                this.toggleEffect(btn.dataset.effect);
+                await this.toggleEffect(btn.dataset.effect);
             });
         });
         
-        // WhatsApp-style scrubbing with Hammer.js to avoid conflicts
-        this.setupWaveformScrubbing(waveform);
+        // WhatsApp-style waveform scrubbing
+        this.setupWaveformScrubbing(waveformContainer);
     }
     
     setupWaveformScrubbing(waveform) {
-        // Create separate Hammer instance for waveform only
+        // Use Hammer.js for precise touch handling
         this.waveformHammer = new Hammer(waveform);
         this.waveformHammer.get('pan').set({ 
             direction: Hammer.DIRECTION_HORIZONTAL,
-            threshold: 8,   // Slightly higher threshold for more deliberate scrubbing
-            pointers: 1
+            threshold: 1  // Very sensitive for precise scrubbing
         });
         
-        // Disable rotation and vertical pan on waveform
-        this.waveformHammer.get('rotate').set({ enable: false });
-        this.waveformHammer.get('pinch').set({ enable: false });
-        
-        let scrubStarted = false;
-        
         this.waveformHammer.on('panstart', (e) => {
-            e.srcEvent.stopPropagation(); // Prevent main element dragging
-            scrubStarted = true;
-            waveform.classList.add('scrubbing');
+            this.isScrubbing = true;
             this.updateScrubPosition(e);
-            if (navigator.vibrate) navigator.vibrate(5);
+            if (navigator.vibrate) navigator.vibrate(3);
         });
         
         this.waveformHammer.on('panmove', (e) => {
-            if (scrubStarted) {
-                e.srcEvent.stopPropagation();
+            if (this.isScrubbing) {
                 this.updateScrubPosition(e);
             }
         });
         
-        this.waveformHammer.on('panend', (e) => {
-            scrubStarted = false;
-            waveform.classList.remove('scrubbing');
-            
-            // Fade out the highlight after scrubbing like WhatsApp
-            const highlight = this.element.querySelector('.waveform-highlight');
-            setTimeout(() => {
-                if (!this.isPlaying) {
-                    highlight.style.opacity = '0.3';
-                }
-            }, 300);
-            
-            e.srcEvent.stopPropagation();
+        this.waveformHammer.on('panend', () => {
+            this.isScrubbing = false;
         });
         
-        // Also handle simple taps for seeking
+        // Handle taps for instant seeking
         this.waveformHammer.on('tap', (e) => {
-            e.srcEvent.stopPropagation();
             this.updateScrubPosition(e);
-            if (navigator.vibrate) navigator.vibrate(5);
+            if (navigator.vibrate) navigator.vibrate(3);
         });
     }
     
-    setupGestures() {
-        // Use Hammer.js for smooth touch interactions
-        this.hammer = new Hammer(this.element);
-        
-        // Enable pan and rotate with higher thresholds to prevent twitchy behavior
-        this.hammer.get('pan').set({ 
-            direction: Hammer.DIRECTION_ALL,
-            threshold: 15,  // Higher threshold to prevent accidental movement
-            pointers: 1     // Only single finger for dragging
-        });
-        this.hammer.get('rotate').set({ 
-            enable: true,
-            threshold: 20   // Higher threshold for rotation
-        });
-        
-        // Store initial position and rotation
-        this.initialTransform = {
-            x: parseFloat(this.element.style.left),
-            y: parseFloat(this.element.style.top),
-            rotation: 0
-        };
-        
-        this.currentTransform = { ...this.initialTransform };
-        
-        // Pan (drag) gesture
-        this.hammer.on('panstart', (e) => {
-            this.element.style.transition = 'none';
-            this.element.style.zIndex = '1000';
-            if (navigator.vibrate) navigator.vibrate(10);
-        });
-        
-        this.hammer.on('panmove', (e) => {
-            const newX = this.initialTransform.x + e.deltaX;
-            const newY = this.initialTransform.y + e.deltaY;
-            
-            // Keep within screen bounds
-            const bounds = this.getScreenBounds();
-            const clampedX = Math.max(0, Math.min(newX, bounds.maxX));
-            const clampedY = Math.max(0, Math.min(newY, bounds.maxY));
-            
-            this.currentTransform.x = clampedX;
-            this.currentTransform.y = clampedY;
-            
-            this.updateElementTransform();
-        });
-        
-        this.hammer.on('panend', (e) => {
-            this.element.style.transition = '';
-            this.element.style.zIndex = '';
-            this.initialTransform.x = this.currentTransform.x;
-            this.initialTransform.y = this.currentTransform.y;
-            this.element.style.left = `${this.currentTransform.x}px`;
-            this.element.style.top = `${this.currentTransform.y}px`;
-        });
-        
-        // Rotate gesture
-        this.hammer.on('rotatestart', (e) => {
-            if (navigator.vibrate) navigator.vibrate(8);
-        });
-        
-        this.hammer.on('rotatemove', (e) => {
-            this.currentTransform.rotation = this.initialTransform.rotation + e.rotation;
-            this.updateElementTransform();
-        });
-        
-        this.hammer.on('rotateend', (e) => {
-            this.initialTransform.rotation = this.currentTransform.rotation;
-        });
-    }
-    
-    updateElementTransform() {
-        const { x, y, rotation } = this.currentTransform;
-        this.element.style.transform = `translate(${x - this.initialTransform.x}px, ${y - this.initialTransform.y}px) rotate(${rotation}deg)`;
-    }
-    
-    getScreenBounds() {
-        const rect = this.element.getBoundingClientRect();
-        return {
-            maxX: window.innerWidth - rect.width,
-            maxY: window.innerHeight - rect.height
-        };
-    }
-    
-    // WhatsApp-style scrubbing with visual feedback
     updateScrubPosition(e) {
         const waveform = this.element.querySelector('.waveform-container');
-        const highlight = this.element.querySelector('.waveform-highlight');
         const rect = waveform.getBoundingClientRect();
         
-        // Get position from Hammer event
-        const clientX = e.center.x;
-        const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
-        const progress = Math.max(0, Math.min(1, x / rect.width));
+        const x = Math.max(0, Math.min(e.center.x - rect.left, rect.width));
+        const progress = x / rect.width;
         
-        // Update visual highlight smoothly like WhatsApp
-        highlight.style.width = `${progress * 100}%`;
-        highlight.style.opacity = '1';
-        
-        // Update audio position if duration is available
         if (this.audio.duration && !isNaN(this.audio.duration)) {
-            const newTime = progress * this.audio.duration;
-            this.audio.currentTime = newTime;
+            // Seek to position
+            this.audio.currentTime = progress * this.audio.duration;
             
-            // Update duration display immediately for responsive feel
-            const remaining = this.audio.duration - newTime;
-            this.element.querySelector('.duration').textContent = this.formatTime(remaining);
+            // Update visual progress immediately
+            this.updateProgressVisual(progress);
             
-            // Update progress bar to match scrub position
-            this.element.querySelector('.progress-bar').style.width = `${progress * 100}%`;
+            // Update timer to show current position (counting up from 0)
+            const currentTime = this.audio.currentTime;
+            this.element.querySelector('.voice-duration').textContent = this.formatTime(currentTime);
         }
     }
     
-    togglePlay() {
+    updateProgressVisual(progress) {
+        const progressDiv = this.element.querySelector('.waveform-progress');
+        progressDiv.style.width = `${progress * 100}%`;
+    }
+    
+    async togglePlay() {
         if (this.isPlaying) {
             this.pause();
         } else {
-            this.play();
+            await this.play();
         }
     }
     
-    play() {
+    async play() {
         // Stop any other playing audio
         if (currentlyPlaying && currentlyPlaying !== this) {
             currentlyPlaying.stop();
         }
         
-        this.audio.play();
-        this.isPlaying = true;
-        this.element.classList.add('playing');
-        currentlyPlaying = this;
-        
-        if (navigator.vibrate) navigator.vibrate(15);
+        try {
+            await this.audio.play();
+            this.isPlaying = true;
+            this.element.classList.add('playing');
+            currentlyPlaying = this;
+            
+            if (navigator.vibrate) navigator.vibrate(10);
+        } catch (error) {
+            console.error('Play failed:', error);
+        }
     }
     
     pause() {
@@ -316,8 +233,7 @@ class VoiceNote {
             // Turn off effect
             this.currentEffect = 'normal';
             btn.classList.remove('active');
-            this.audio.playbackRate = 1;
-            this.disableWebAudio();
+            await this.applyEffect('normal');
         } else {
             // Turn on new effect
             allBtns.forEach(b => b.classList.remove('active'));
@@ -326,102 +242,94 @@ class VoiceNote {
             await this.applyEffect(effect);
         }
         
-        if (navigator.vibrate) navigator.vibrate(8);
+        if (navigator.vibrate) navigator.vibrate(5);
     }
     
     async applyEffect(effect) {
         switch (effect) {
             case 'fast':
                 this.audio.playbackRate = 1.5;
-                this.disableWebAudio();
+                this.disconnectWebAudio();
                 break;
             case 'slow':
                 this.audio.playbackRate = 0.75;
-                this.disableWebAudio();
+                this.disconnectWebAudio();
                 break;
             case 'bass':
                 this.audio.playbackRate = 1;
-                await this.enableBassEffect();
+                await this.setupBassEffect();
                 break;
             default:
                 this.audio.playbackRate = 1;
-                this.disableWebAudio();
+                this.disconnectWebAudio();
         }
     }
     
-    async enableBassEffect() {
+    async setupBassEffect() {
         try {
             if (!this.audioContext) {
                 this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
             
-            // Connect HTML5 audio to Web Audio for processing
-            if (!this.source) {
+            if (!this.isWebAudioSetup) {
+                // Create source from HTML5 audio element
                 this.source = this.audioContext.createMediaElementSource(this.audio);
                 
-                // Create bass boost filter chain
-                this.bassFilter = this.audioContext.createBiquadFilter();
-                this.bassFilter.type = 'lowshelf';
-                this.bassFilter.frequency.value = 150;
-                this.bassFilter.gain.value = 15; // Heavy bass boost
+                // Create powerful bass boost chain
+                const lowShelf = this.audioContext.createBiquadFilter();
+                lowShelf.type = 'lowshelf';
+                lowShelf.frequency.value = 200;
+                lowShelf.gain.value = 18; // Heavy bass boost
                 
-                // Additional low-end enhancement
-                this.subBassFilter = this.audioContext.createBiquadFilter();
-                this.subBassFilter.type = 'peaking';
-                this.subBassFilter.frequency.value = 60;
-                this.subBassFilter.Q.value = 1;
-                this.subBassFilter.gain.value = 12;
+                const peaking = this.audioContext.createBiquadFilter();
+                peaking.type = 'peaking';
+                peaking.frequency.value = 60;
+                peaking.Q.value = 1.5;
+                peaking.gain.value = 15; // Deep sub-bass
                 
-                // Gain control
-                this.gainNode = this.audioContext.createGain();
-                this.gainNode.gain.value = 1.3;
+                const gain = this.audioContext.createGain();
+                gain.gain.value = 1.4; // Volume boost
                 
                 // Connect the chain
-                this.source.connect(this.bassFilter);
-                this.bassFilter.connect(this.subBassFilter);
-                this.subBassFilter.connect(this.gainNode);
-                this.gainNode.connect(this.audioContext.destination);
+                this.source.connect(lowShelf);
+                lowShelf.connect(peaking);
+                peaking.connect(gain);
+                gain.connect(this.audioContext.destination);
+                
+                this.bassChain = { lowShelf, peaking, gain };
+                this.isWebAudioSetup = true;
+                
+                console.log('Bass effect connected');
             }
-            
-            this.usingWebAudio = true;
         } catch (error) {
-            console.error('Web Audio not supported:', error);
-            // Fallback to visual effect
-            this.element.style.filter = 'contrast(1.3) saturate(1.5) brightness(1.1)';
+            console.error('Bass effect failed:', error);
         }
     }
     
-    disableWebAudio() {
-        this.usingWebAudio = false;
-        this.element.style.filter = '';
-        
-        // Web Audio chain remains connected for bass effect
-        // Only disconnect when stopping completely
+    disconnectWebAudio() {
+        // Web Audio chain stays connected for seamless switching back to bass
+        // Only visual cleanup needed
     }
     
     updateDuration() {
         const duration = this.audio.duration;
         if (duration && !isNaN(duration)) {
-            this.element.querySelector('.duration').textContent = this.formatTime(duration);
+            // Start with 0:00 like WhatsApp
+            this.element.querySelector('.voice-duration').textContent = '0:00';
         }
     }
     
     updateProgress() {
         if (!this.audio.duration) return;
         
-        const progress = (this.audio.currentTime / this.audio.duration) * 100;
-        const remaining = this.audio.duration - this.audio.currentTime;
+        const progress = this.audio.currentTime / this.audio.duration;
+        const currentTime = this.audio.currentTime; // Count up from 0 like WhatsApp
         
-        // Update both progress bar and highlight during playback
-        this.element.querySelector('.progress-bar').style.width = `${progress}%`;
-        this.element.querySelector('.duration').textContent = this.formatTime(remaining);
+        // Update visual progress
+        this.updateProgressVisual(progress);
         
-        // Keep highlight synchronized during playback like WhatsApp
-        const highlight = this.element.querySelector('.waveform-highlight');
-        if (this.isPlaying) {
-            highlight.style.width = `${progress}%`;
-            highlight.style.opacity = '1';
-        }
+        // Update timer (counting up from 0, not down from total)
+        this.element.querySelector('.voice-duration').textContent = this.formatTime(currentTime);
     }
     
     formatTime(seconds) {
@@ -429,55 +337,42 @@ class VoiceNote {
         const secs = Math.floor(seconds % 60);
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
-    
-    createWaveformBars() {
-        let bars = '';
-        for (let i = 0; i < 20; i++) {
-            bars += '<div class="waveform-bar"></div>';
-        }
-        return bars;
-    }
-    
-    getRandomPosition() {
-        const margin = 100;
-        const x = margin + Math.random() * (window.innerWidth - margin * 2 - 250);
-        const y = margin + Math.random() * (window.innerHeight - margin * 2 - 60);
-        return { x, y };
-    }
-    
-    getRandomColor() {
-        const colors = [
-            '#075e54', '#128c7e', '#25d366', '#34b7f1', '#7b68ee',
-            '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57'
-        ];
-        return colors[Math.floor(Math.random() * colors.length)];
-    }
 }
 
-async function loadAudioFiles() {
+// Load and create voice messages
+async function loadVoiceMessages() {
     audioFiles = [
         'https://res.cloudinary.com/dprjkfgqf/video/upload/f_mp3,br_128k/v1755302946/megl-accussi_km8uea.wav'
     ];
     
     if (audioFiles.length > 0) {
         audioFiles.forEach((file, index) => {
+            // Stagger creation slightly for smooth loading
             setTimeout(() => {
-                new VoiceNote(file, index);
-            }, index * 100);
+                new WhatsAppVoiceMessage(file, index);
+            }, index * 50);
         });
+    } else {
+        console.log('No audio files found');
     }
 }
 
+// Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    loadAudioFiles();
+    loadVoiceMessages();
 });
 
-window.addEventListener('resize', () => {
-    // Reposition notes on resize if needed
-    document.querySelectorAll('.voice-note').forEach((note, index) => {
-        const voiceNote = new VoiceNote('', index);
-        const position = voiceNote.getRandomPosition();
-        note.style.left = `${position.x}px`;
-        note.style.top = `${position.y}px`;
-    });
+// Auto-scroll to bottom like WhatsApp
+function scrollToBottom() {
+    const container = document.querySelector('.chat-container');
+    container.scrollTop = container.scrollHeight;
+}
+
+// Scroll to bottom when new messages are added
+const observer = new MutationObserver(() => {
+    scrollToBottom();
+});
+
+observer.observe(document.getElementById('messages-container'), {
+    childList: true
 });

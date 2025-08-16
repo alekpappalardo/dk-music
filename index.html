@@ -5,12 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#000000">
-    <title>Voice Notes</title>
+    <meta name="theme-color" content="#111b21">
+    <title>Voice Messages</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div id="voice-notes-container"></div>
+    <!-- WhatsApp-style header -->
+    <div class="chat-header">
+        <div class="contact-info">
+            <div class="contact-avatar">
+                <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='20' fill='%2354656f'/%3E%3Ctext x='20' y='26' text-anchor='middle' fill='white' font-family='system-ui' font-size='16' font-weight='500'%3EAL%3C/text%3E%3C/svg%3E" alt="Contact">
+            </div>
+            <div class="contact-details">
+                <div class="contact-name">Alek</div>
+                <div class="contact-status">last seen recently</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- WhatsApp-style conversation -->
+    <div class="chat-container">
+        <div class="messages-container" id="messages-container">
+            <!-- Voice messages will be added here -->
+        </div>
+    </div>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
     <script src="script.js"></script>
 </body>
