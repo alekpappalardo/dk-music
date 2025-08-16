@@ -29,14 +29,14 @@ body {
     position: absolute;
     background: #075e54;
     border-radius: 7px;
-    padding: 6px 10px;
-    min-width: min(180px, 75vw);
-    max-width: min(250px, 80vw);
+    padding: 8px 12px;
+    min-width: min(240px, 85vw);
+    max-width: min(320px, 90vw);
     box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     cursor: grab;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     user-select: none;
     touch-action: none;
     will-change: transform;
@@ -58,8 +58,8 @@ body {
 }
 
 .play-button {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     background: rgba(255,255,255,0.95);
     border-radius: 50%;
     display: flex;
@@ -112,7 +112,7 @@ body {
 
 .waveform-container {
     flex: 1;
-    height: 28px;
+    height: 32px;
     display: flex;
     align-items: center;
     gap: 2px;
@@ -121,6 +121,7 @@ body {
     cursor: pointer;
     border-radius: 3px;
     transition: background-color 0.2s ease;
+    padding: 2px 4px;
 }
 
 .waveform-container:hover {
@@ -216,12 +217,12 @@ body {
 }
 
 .effect-btn {
-    padding: 3px 6px;
+    padding: 4px 8px;
     background: rgba(255,255,255,0.1);
     border: none;
     border-radius: 3px;
     color: rgba(255,255,255,0.7);
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -229,7 +230,7 @@ body {
     text-align: center;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
-    min-height: 20px;
+    min-height: 24px;
     text-transform: uppercase;
     letter-spacing: 0.3px;
 }

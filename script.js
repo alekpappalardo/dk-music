@@ -359,14 +359,18 @@ function createVoiceNote(audioFile, index) {
     
     // Add WhatsApp-style scrubbing functionality
     const waveformContainer = voiceNote.querySelector('.waveform-container');
-    waveformContainer.addEventListener('click', (e) => {
+    let isScrubbing = false;
+    
+    function handleScrub(e) {
         e.stopPropagation();
+        e.preventDefault();
         
         if (!audioBuffer) return;
         
         const rect = waveformContainer.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const progress = clickX / rect.width;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clickX = clientX - rect.left;
+        const progress = Math.max(0, Math.min(1, clickX / rect.width));
         const newTime = progress * audioBuffer.duration;
         
         pauseTime = Math.max(0, Math.min(newTime, audioBuffer.duration));
@@ -388,6 +392,38 @@ function createVoiceNote(audioFile, index) {
             voiceNote.querySelector('.progress-bar').style.width = `${progressPercent}%`;
             voiceNote.querySelector('.duration').textContent = formatDuration(audioBuffer.duration - pauseTime);
         }
+    }
+    
+    // Touch events for mobile scrubbing
+    waveformContainer.addEventListener('touchstart', (e) => {
+        isScrubbing = true;
+        handleScrub(e);
+    }, { passive: false });
+    
+    waveformContainer.addEventListener('touchmove', (e) => {
+        if (isScrubbing) {
+            handleScrub(e);
+        }
+    }, { passive: false });
+    
+    waveformContainer.addEventListener('touchend', () => {
+        isScrubbing = false;
+    });
+    
+    // Mouse events for desktop
+    waveformContainer.addEventListener('mousedown', (e) => {
+        isScrubbing = true;
+        handleScrub(e);
+    });
+    
+    waveformContainer.addEventListener('mousemove', (e) => {
+        if (isScrubbing) {
+            handleScrub(e);
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        isScrubbing = false;
     });
     
     let isDragging = false;
@@ -461,11 +497,23 @@ function createVoiceNote(audioFile, index) {
         const deltaX = clientX - dragStartX;
         const deltaY = clientY - dragStartY;
         
-        const newX = elementStartX + deltaX;
-        const newY = elementStartY + deltaY;
+        let newX = elementStartX + deltaX;
+        let newY = elementStartY + deltaY;
         
-        // Use transform for better performance on mobile
-        voiceNote.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0) rotate(${getRandomRotation()}deg)`;
+        // Add border constraints - prevent going beyond screen edges
+        const noteWidth = voiceNote.offsetWidth;
+        const noteHeight = voiceNote.offsetHeight;
+        const screenWidth = window.innerWidth;
+        const screenHeight = window.innerHeight;
+        
+        newX = Math.max(0, Math.min(newX, screenWidth - noteWidth));
+        newY = Math.max(0, Math.min(newY, screenHeight - noteHeight));
+        
+        // Get current rotation (preserve it during drag for smoother feel)
+        const currentRotation = parseFloat(voiceNote.style.transform.match(/rotate\(([-\d.]+)deg\)/)?.[1] || 0);
+        
+        // Use transform for better performance on mobile - no random rotation during drag
+        voiceNote.style.transform = `translate3d(${newX - elementStartX}px, ${newY - elementStartY}px, 0) rotate(${currentRotation}deg)`;
         voiceNote.style.left = `${newX}px`;
         voiceNote.style.top = `${newY}px`;
         
@@ -490,24 +538,25 @@ function createVoiceNote(audioFile, index) {
             velocityX = avgVelocityX * 2; // Amplify for better throw feel
             velocityY = avgVelocityY * 2;
             
-            if (Math.abs(velocityX) > 1 || Math.abs(velocityY) > 1) {
+            // Only animate if thrown with significant force (increase threshold)
+            if (Math.abs(velocityX) > 3 || Math.abs(velocityY) > 3) {
                 animateThrow();
             }
         }
     }
     
     function animateThrow() {
-        const friction = 0.98;
-        const gravity = 0.4;
-        const bounceDamping = 0.75;
-        const minVelocity = 0.3;
-        const maxVelocity = 25;
+        const friction = 0.95;
+        const gravity = 0.3;
+        const bounceDamping = 0.6;
+        const minVelocity = 0.5;
+        const maxVelocity = 15; // Reduced max velocity for gentler throws
         
         // Cap velocity for smoother experience
         velocityX = Math.max(-maxVelocity, Math.min(maxVelocity, velocityX));
         velocityY = Math.max(-maxVelocity, Math.min(maxVelocity, velocityY));
         
-        let rotationVelocity = velocityX * 0.3;
+        let rotationVelocity = velocityX * 0.1; // Much less rotation
         let currentRotation = parseFloat(voiceNote.style.transform.match(/rotate\(([-\d.]+)deg\)/)?.[1] || 0);
         
         function animate() {
