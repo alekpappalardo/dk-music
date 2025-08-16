@@ -4,9 +4,9 @@ let currentlyPlaying = null;
 async function loadAudioFiles() {
     // For now, manually specify your audio file
     // Replace this with your actual audio filename
-    // Use Cloudinary URL with optimizations for fast loading
+    // Use Cloudinary URL - try different format
     audioFiles = [
-        'https://res.cloudinary.com/dprjkfgqf/video/upload/ac_none,br_128k,f_mp3/v1755302946/megl-accussi_km8uea.wav'
+        'https://res.cloudinary.com/dprjkfgqf/video/upload/f_mp3,br_128k/v1755302946/megl-accussi_km8uea.wav'
     ];
     
     if (audioFiles.length > 0) {
@@ -119,8 +119,28 @@ function createVoiceNote(audioFile, index) {
     
     // Instant UI feedback - show duration as soon as metadata loads
     html5Audio.addEventListener('loadedmetadata', () => {
-        voiceNote.querySelector('.duration').textContent = formatDuration(html5Audio.duration);
-        console.log('Audio metadata loaded instantly, duration:', html5Audio.duration);
+        const duration = html5Audio.duration;
+        if (duration && !isNaN(duration)) {
+            voiceNote.querySelector('.duration').textContent = formatDuration(duration);
+            console.log('Audio metadata loaded instantly, duration:', duration);
+        } else {
+            console.error('Invalid duration:', duration);
+            voiceNote.querySelector('.duration').textContent = 'Loading...';
+        }
+    });
+    
+    // Additional event listeners for debugging
+    html5Audio.addEventListener('loadstart', () => {
+        console.log('Audio loading started');
+        voiceNote.querySelector('.duration').textContent = 'Loading...';
+    });
+    
+    html5Audio.addEventListener('durationchange', () => {
+        const duration = html5Audio.duration;
+        if (duration && !isNaN(duration)) {
+            voiceNote.querySelector('.duration').textContent = formatDuration(duration);
+            console.log('Duration changed:', duration);
+        }
     });
     
     html5Audio.addEventListener('canplaythrough', () => {
@@ -398,6 +418,11 @@ function createVoiceNote(audioFile, index) {
     playButton.addEventListener('click', async (e) => {
         e.stopPropagation();
         
+        // Haptic feedback for play/pause
+        if (navigator.vibrate) {
+            navigator.vibrate(15);
+        }
+        
         if (isPlaying) {
             pauseAudioHybrid();
         } else {
@@ -436,6 +461,11 @@ function createVoiceNote(audioFile, index) {
     effectButtons.forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
+            
+            // Subtle haptic feedback for effect buttons
+            if (navigator.vibrate) {
+                navigator.vibrate(8);
+            }
             
             const effect = btn.dataset.effect;
             
@@ -543,6 +573,8 @@ function createVoiceNote(audioFile, index) {
     let lastMouseX = 0;
     let lastMouseY = 0;
     let animationId = null;
+    let baseRotation = rotation; // Store initial rotation
+    let dragRotation = 0; // Additional rotation from dragging
     
     function startDrag(e) {
         if (e.target.classList.contains('effect-btn') || 
@@ -553,6 +585,7 @@ function createVoiceNote(audioFile, index) {
         voiceNote.style.cursor = 'grabbing';
         voiceNote.style.zIndex = '1000';
         voiceNote.style.transition = 'none';
+        voiceNote.style.willChange = 'transform';
         
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -566,17 +599,16 @@ function createVoiceNote(audioFile, index) {
         
         velocityX = 0;
         velocityY = 0;
-        
-        // Track velocity history for smoother throws
-        const velocityHistory = [];
-        const historyLimit = 5;
-        
-        voiceNote.velocityHistory = velocityHistory;
-        voiceNote.historyLimit = historyLimit;
+        dragRotation = 0; // Reset drag rotation
         
         if (animationId) {
             cancelAnimationFrame(animationId);
             animationId = null;
+        }
+        
+        // Add haptic feedback on touch devices
+        if (navigator.vibrate && e.touches) {
+            navigator.vibrate(12); // Light touch feedback
         }
         
         e.preventDefault();
@@ -586,17 +618,14 @@ function createVoiceNote(audioFile, index) {
     function drag(e) {
         if (!isDragging) return;
         
+        // Handle two-finger rotation
+        if (e.touches && e.touches.length === 2) {
+            handleTwoFingerRotation(e);
+            return;
+        }
+        
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        
-        const newVelocityX = clientX - lastMouseX;
-        const newVelocityY = clientY - lastMouseY;
-        
-        // Track velocity history for smoother throwing
-        voiceNote.velocityHistory.push({ x: newVelocityX, y: newVelocityY, time: Date.now() });
-        if (voiceNote.velocityHistory.length > voiceNote.historyLimit) {
-            voiceNote.velocityHistory.shift();
-        }
         
         lastMouseX = clientX;
         lastMouseY = clientY;
@@ -616,15 +645,67 @@ function createVoiceNote(audioFile, index) {
         newX = Math.max(0, Math.min(newX, screenWidth - noteWidth));
         newY = Math.max(0, Math.min(newY, screenHeight - noteHeight));
         
-        // Add smooth rotation during drag based on movement
-        const currentRotation = parseFloat(voiceNote.style.transform.match(/rotate\(([-\d.]+)deg\)/)?.[1] || 0);
-        const rotationIncrement = (newVelocityX + newVelocityY) * 0.5; // Smooth rotation based on movement
-        const newRotation = currentRotation + rotationIncrement;
+        // Keep rotation stable - only position changes during single finger drag
+        const currentRotation = baseRotation + dragRotation;
         
-        // Use transform for better performance on mobile
-        voiceNote.style.transform = `translate3d(${newX - elementStartX}px, ${newY - elementStartY}px, 0) rotate(${newRotation}deg)`;
+        // Use transform for 60fps performance
+        voiceNote.style.transform = `translate3d(${newX - elementStartX}px, ${newY - elementStartY}px, 0) rotate(${currentRotation}deg)`;
         voiceNote.style.left = `${newX}px`;
         voiceNote.style.top = `${newY}px`;
+        
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    // Two-finger rotation like iOS/Android
+    let lastAngle = 0;
+    let isRotating = false;
+    let rotationRequestId = null;
+    
+    function handleTwoFingerRotation(e) {
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        
+        // Calculate angle between two fingers
+        const angle = Math.atan2(touch2.clientY - touch1.clientY, touch2.clientX - touch1.clientX) * (180 / Math.PI);
+        
+        if (!isRotating) {
+            lastAngle = angle;
+            isRotating = true;
+            // Haptic feedback for rotation start
+            if (navigator.vibrate && e.touches) {
+                navigator.vibrate(8);
+            }
+            return;
+        }
+        
+        // Throttle rotation updates for smooth performance
+        if (rotationRequestId) return;
+        
+        rotationRequestId = requestAnimationFrame(() => {
+            // Calculate rotation delta
+            let angleDelta = angle - lastAngle;
+            
+            // Handle angle wraparound
+            if (angleDelta > 180) angleDelta -= 360;
+            if (angleDelta < -180) angleDelta += 360;
+            
+            // Apply slight damping for smoother rotation
+            angleDelta *= 0.8;
+            
+            dragRotation += angleDelta;
+            lastAngle = angle;
+            
+            // Apply rotation immediately with hardware acceleration
+            const newRotation = baseRotation + dragRotation;
+            const currentTransform = voiceNote.style.transform;
+            const translateMatch = currentTransform.match(/translate3d\([^)]+\)/);
+            const translatePart = translateMatch ? translateMatch[0] : 'translate3d(0px, 0px, 0px)';
+            
+            voiceNote.style.transform = `${translatePart} rotate(${newRotation}deg)`;
+            
+            rotationRequestId = null;
+        });
         
         e.preventDefault();
         e.stopPropagation();
@@ -634,23 +715,49 @@ function createVoiceNote(audioFile, index) {
         if (!isDragging) return;
         
         isDragging = false;
+        isRotating = false;
         voiceNote.style.cursor = 'grab';
         voiceNote.style.zIndex = '';
+        voiceNote.style.willChange = 'auto';
         
-        // Clean up transform - keep only rotation
-        const currentRotation = parseFloat(voiceNote.style.transform.match(/rotate\(([-\d.]+)deg\)/)?.[1] || 0);
-        voiceNote.style.transform = `rotate(${currentRotation}deg)`;
+        // Clean up rotation animation frame
+        if (rotationRequestId) {
+            cancelAnimationFrame(rotationRequestId);
+            rotationRequestId = null;
+        }
+        
+        // Update base rotation with drag rotation
+        baseRotation += dragRotation;
+        dragRotation = 0;
+        
+        // Clean up transform - keep only final rotation
+        voiceNote.style.transform = `rotate(${baseRotation}deg)`;
     }
     
     
+    // Optimized event listeners for ultra-smooth touch
     voiceNote.addEventListener('mousedown', startDrag);
-    voiceNote.addEventListener('touchstart', startDrag, { passive: false });
+    voiceNote.addEventListener('touchstart', startDrag, { passive: false, capture: true });
     
-    document.addEventListener('mousemove', drag);
-    document.addEventListener('touchmove', drag, { passive: false });
+    // Use throttled move events for 60fps performance
+    let moveRequestId = null;
+    
+    function throttledDrag(e) {
+        if (moveRequestId) return;
+        moveRequestId = requestAnimationFrame(() => {
+            drag(e);
+            moveRequestId = null;
+        });
+    }
+    
+    document.addEventListener('mousemove', throttledDrag);
+    document.addEventListener('touchmove', throttledDrag, { passive: false });
     
     document.addEventListener('mouseup', endDrag);
     document.addEventListener('touchend', endDrag);
+    
+    // Handle touch cancel events
+    document.addEventListener('touchcancel', endDrag);
     
     container.appendChild(voiceNote);
 }
