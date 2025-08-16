@@ -4,10 +4,9 @@ let currentlyPlaying = null;
 async function loadAudioFiles() {
     // For now, manually specify your audio file
     // Replace this with your actual audio filename
-    // Use different path for local vs deployed
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    // Use Cloudinary URL for reliable hosting
     audioFiles = [
-        isLocal ? '/public/audio/megl-accussi.wav' : '/audio/megl-accussi.wav'
+        'https://res.cloudinary.com/dprjkfgqf/video/upload/v1755302946/megl-accussi_km8uea.wav'
     ];
     
     if (audioFiles.length > 0) {
@@ -92,7 +91,7 @@ function createVoiceNote(audioFile, index) {
     let currentEffect = 'normal';
     let chopInterval = null;
     
-    fetch(audioFile.startsWith('/') ? audioFile : `/audio/${audioFile}`)
+    fetch(audioFile)
         .then(response => {
             console.log('Audio fetch response:', response.status, response.statusText);
             if (!response.ok) {
@@ -116,8 +115,8 @@ function createVoiceNote(audioFile, index) {
             voiceNote.querySelector('.duration').textContent = 'LFS Error';
             
             // Show error details in console
-            console.log('File URL:', audioFile.startsWith('/') ? audioFile : `/audio/${audioFile}`);
-            console.log('Is local:', window.location.hostname === 'localhost');
+            console.log('File URL:', audioFile);
+            console.log('Error details:', error.message);
         });
     
     function playAudio(playbackRate = 1) {
